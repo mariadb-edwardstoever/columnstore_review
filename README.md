@@ -1,2 +1,2 @@
-# columnstore_review
+# Columnstore Review
 Review MariaDB Columnstore for Support
