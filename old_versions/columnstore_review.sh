@@ -1,7 +1,7 @@
 #!/bin/bash
 # columnstore_review.sh
 # script by Edward Stoever for MariaDB support
-VERSION=1.1.2
+VERSION=1.1.1
 
 function prepare_for_run() {
 
@@ -427,9 +427,9 @@ function report_topology() {
   if [ ! "$PM1" == "127.0.0.1" ] && [ ! -z $PM2 ]; then
     print0 "Cluster\n"
     for ((i=1;i<=9;i++)); do
-      ipaddress=$(mcsGetConfig pms${i} ipaddr)
+      ipaddress=$(mcsGetConfig pms$i ipaddr)
       if [ $ipaddress ]; then
-        ech0 "pm$i $ipaddress"
+         ech0 pm$i $ipaddress
       fi
     done
   else
@@ -597,7 +597,7 @@ function collect_logs() {
     tail -100000 $LOG_ERROR > $OUTFILE
   fi
   if [ -f $LOG_ERROR ]; then
-    tail -1000000 $LOG_ERROR | grep -iv "\[warning\]"|grep -iv "\[note\]"  > $FILTEREDFILE
+    tail -1000000 $LOG_ERROR | grep -i "\[error\]"  > $FILTEREDFILE
   fi
   cp /etc/columnstore/Columnstore.xml $LOGSOUTDIR/columnstore
   find /var/log \( -name "messages" -o -name "messages.1" \) -type f -exec cp {} $LOGSOUTDIR/system \;
@@ -627,20 +627,16 @@ function empty_directories(){
   print0 "Empty directories in /var/lib/columnstore can be caused by failed runs of cpimport.\nThey are not necessarily a serious issue.\n"
   ech0
   print_color "### Empty Directories in /var/lib/columnstore ###\n"
-  EMPTY_DIRS=$(find /var/lib/columnstore -type d -name "[0-9][0-9][0-9].dir" -empty)
-  ech0 "$EMPTY_DIRS"
+  find /var/lib/columnstore -type d -name "[0-9][0-9][0-9].dir" -empty
   ech0
-  display_outputfile_message
 }
 
 function not_mysql_directories(){
   print0 "There should not be any directores in /var/lib/columnstore that are not owned by mysql.\n"
   ech0
   print_color "### Directories not owned by mysql ###\n"
-  NOT_MYSQL_DIRS=$(find /var/lib/columnstore/ ! -user mysql -type d)
-  ech0 "$NOT_MYSQL_DIRS"
+  find /var/lib/columnstore/ ! -user mysql -type d
   ech0
-  display_outputfile_message
 }
 
 function add_pscs_alias() {
@@ -757,11 +753,7 @@ function oid_missing_file() {
 }
 
 function extent_map_check() {
-if [ $CAN_CONNECT ]; then 
-  IS_SYSCOLUMN=$(mariadb -ABNe "select count(*) from information_schema.tables where table_schema='calpontsys' and table_name='syscolumn';");
-else
-  IS_SYSCOLUMN=0;
-fi
+
 STORAGE_TYPE=$(grep service /etc/columnstore/storagemanager.cnf | grep -v "^\#" | grep "\=" | awk -F= '{print $2}' | xargs)
 if [ ! "$(echo $STORAGE_TYPE | awk '{print tolower($0)}')" == "localstorage" ]; then
   TEMP_COLOR=lred; print_color "Storage type is $STORAGE_TYPE. "; unset TEMP_COLOR; print0 "This storage type is unupported for the extent map check.\n\n"; exit 0
@@ -804,7 +796,7 @@ fi
 
 if [ ! $USECACHED ]; then
 ech0
-if [ $CAN_CONNECT ] && [ "$IS_SYSCOLUMN" == "1" ]; then
+if [ $CAN_CONNECT ]; then
   COLUMNSTORE_COLCOUNT=$(mariadb -ABNe "select count(1) from calpontsys.syscolumn;"); COLUMNSTORE_COLCOUNT=$(printf "%'d" $COLUMNSTORE_COLCOUNT)
   print0 "Your instance has $COLUMNSTORE_COLCOUNT Columnstore columns. There will likely be more than 2 files on disk for each column.\n"
 fi
@@ -926,7 +918,7 @@ if [ "$MISSING_COUNT" -gt "0" ]; then
   SQL="select \`schema\`,tablename,columnname, objectid, dictobjectid, listobjectid, treeobjectid
        from calpontsys.syscolumn
        where objectid in ($OIDLIST) or dictobjectid in ($OIDLIST) or listobjectid in ($OIDLIST) or treeobjectid in ($OIDLIST);"
-  if [ $CAN_CONNECT ] && [ "$IS_SYSCOLUMN" == "1" ]; then
+  if [ $CAN_CONNECT ]; then
     MISSINGOIDSREPORT=$(mariadb -v -v -v -Ae "$SQL" | sed -nr '/^(\+|^\|)/p') 2>/dev/null || ERR=true
     if [ ! $ERR ]; then
       print_color "### Database Objects Effected by Missing Files ###\n"
@@ -938,11 +930,9 @@ else
   ech0 "There are no missing files."
   ech0
 fi
-display_outputfile_message
-}
+print_color "### Output saved to $OUTPUTFILE ###\n"
+ech0
 
-function display_outputfile_message() {
-  echo "The output of this script is saved in the file $OUTPUTFILE"; echo;
 }
 
 function display_help_message() {
@@ -1132,8 +1122,6 @@ fi
 
 if [ $COLLECT_LOGS ]; then
   collect_logs
-else
-  if [ ! $SKIP_REPORT ]; then display_outputfile_message; fi
 fi
 
 if [ $BACKUP_DBRM ]; then
