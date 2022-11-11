@@ -1,7 +1,7 @@
 #!/bin/bash
 # columnstore_review.sh
 # script by Edward Stoever for MariaDB support
-VERSION=1.1.3
+VERSION=1.1.2
 
 function prepare_for_run() {
 
@@ -93,21 +93,10 @@ function exists_cmapi_cert_expired() {
 }
 
 function exists_client_able_to_connect_with_socket() {
-  if [ "$(id -u)" -eq 0 ]; then
-    if [ -n "$SUDO_USER" ]; then
-      RUNAS="$(whoami) (sudo)"
-    else 
-      RUNAS="$(whoami)"
-    fi
-  else 
-    RUNAS="$(whoami)"
-  fi
-
   OUTP="Columnstore Review Script Version $VERSION. Script by Edward Stoever for MariaDB Support. Script started at: "
   HDR=$(mariadb -ABNe "select concat('$OUTP', now())" 2>/dev/null || ech0 "$OUTP$(date +'%Y-%m-%d %H:%M:%S - No DB connection.')")
   if [[ ! "$HDR" =~ .*"No DB connection".* ]]; then CAN_CONNECT=true; fi
   print_color "$HDR\n"
-  ech0 "Run as $RUNAS."
   ech0
 }
 
@@ -119,21 +108,6 @@ COREFILE_COUNT=$(find $COREFILE_DIR -type f| wc -l)
       echo "There is 1 file in the Columnstore Core file directory $COREFILE_DIR." >> $WARNFILE;
     else
       echo "There are $COREFILE_COUNT files in the Columnstore Core file directory $COREFILE_DIR." >> $WARNFILE;
-    fi
-  fi
-}
-
-function exists_errors_pushing_config() {
-  MESSAGESFILE=$(find /var/log -name messages -type f | head -1)
-  if [ $MESSAGESFILE ]; then
-    PUSHING_ERRORS=$(grep -i "Got an unexpected error pushing new config to" $MESSAGESFILE |wc -l)
-  fi
-  
-  if [ "$PUSHING_ERRORS" -gt "0" ]; then
-    if [ "$PUSHING_ERRORS" == "1" ]; then
-      echo "There is 1 error related to pushing new config to cmapi in $MESSAGESFILE." >> $WARNFILE;
-    else
-      echo "There are $PUSHING_ERRORS errors related to pushing new config to cmapi in $MESSAGESFILE." >> $WARNFILE;
     fi
   fi
 }
@@ -168,11 +142,11 @@ function exists_cs_error_log() {
 }
 
 function exists_error_log() {
-#  if [ ! $CAN_CONNECT ]; then return; fi
+  if [ ! $CAN_CONNECT ]; then return; fi
   set_log_error
   if [ ! $LOG_ERROR ]; then echo 'MariaDB Server log_error is not set.' >> $WARNFILE; return; fi
   if [ ! -f $LOG_ERROR ]; then echo 'MariaDB Server log_error is set but file is not found.' >> $WARNFILE; unset LOG_ERROR; fi
-#  unset DATADIR FULL_PATH
+  unset DATADIR FULL_PATH
 }
 
 function exists_querystats_enabled() {
@@ -274,13 +248,6 @@ function exists_compression_header_errors() {
    fi
 }
 
-function exists_history_failed_getSystemState() {
-   FAILED_GETSYSTEMSTATE=$(find /var/log/mariadb/columnstore/ -name "debug.log*" ! -name "*gz" | xargs grep 'SessionManager::getSystemState() failed (network)' | wc -l)
-   if [ ! $FAILED_GETSYSTEMSTATE == "0" ]; then
-     echo "Errors found in debug logs: getSystemState failed. MariaDB and Columnstore may not be communicating." >> $WARNFILE
-   fi
-}
-
 function exists_error_opening_file() {
    ERROR_OPENING=$(find /var/log/mariadb/columnstore/ -name "crit.log*" ! -name "*gz" | xargs grep 'Error opening file' | wc -l)
    if [ ! $ERROR_OPENING == "0" ]; then
@@ -309,30 +276,6 @@ function exists_got_signal_errors() {
      echo "This MariaDB instance has crashed recently." >> $WARNFILE
    fi
 }
-
-function exists_does_not_exist_in_columnstore() {
-   IDB2006=$(find /var/log/mariadb/columnstore/ -name "warning.log*" ! -name "*gz" | xargs grep 'IDB-2006' | wc -l)
-   if [ ! $FAILED_GETSYSTEMSTATE == "0" ]; then
-     echo "Errors found in warning logs: IDB-2006 does not exist in Columnstore. MariaDB may be out of sync with Columnstore or there may be a problem with the extent map." >> $WARNFILE
-   fi
-}
-
-function exists_data1_dir_wrong_access_rights() {
-  DATA1DIR=/var/lib/columnstore/data1
-  DATA1DIR_ACCESS_RIGHTS=$(stat -c "%a" $DATA1DIR)
-  if [ ! "$DATA1DIR_ACCESS_RIGHTS" == "1755" ]; then
-    echo "The octal for directory $DATA1DIR should be 1755 and it is not." >> $WARNFILE
-  fi
-}
-
-function exists_systemFiles_dir_wrong_access_rights() {
-  SYSTEMFILES=/var/lib/columnstore/data1/systemFiles
-  SYSTEMFILES_ACCESS_RIGHTS=$(stat -c "%a" $SYSTEMFILES)
-  if [ ! "$SYSTEMFILES_ACCESS_RIGHTS" == "1755" ]; then
-    echo "The octal for directory $SYSTEMFILES should be 1755 and it is not." >> $WARNFILE
-  fi 
-}
-
 
 function report_top_for_mysql_user() {
   if [ ! $MARIADB_RUNNING ] && [ ! $CS_RUNNING ]; then return; fi
@@ -483,13 +426,10 @@ function report_topology() {
   print_color "### Columnstore Topology ###\n"
   if [ ! "$PM1" == "127.0.0.1" ] && [ ! -z $PM2 ]; then
     print0 "Cluster\n"
-    THISHOSTIPS="$(hostname -i)"
     for ((i=1;i<=9;i++)); do
-      IPADDRESS=$(mcsGetConfig pms${i} ipaddr)
-      if [ $IPADDRESS ]; then
-        unset THISHOST
-        if [[ "$THISHOSTIPS" == *"$IPADDRESS"* ]]; then THISHOST="(This host)"; fi
-        ech0 "pm$i $IPADDRESS $THISHOST"
+      ipaddress=$(mcsGetConfig pms${i} ipaddr)
+      if [ $ipaddress ]; then
+        ech0 "pm$i $ipaddress"
       fi
     done
   else
@@ -624,15 +564,6 @@ function report_warnings() {
   ech0
 }
 
-function report_datadir_size() {
-  set_log_error
-  if [ -d $DATADIR ]; then
-    print_color "### Mariadb Datadir Size ###\n"
-    ech0 "$(du -sh $DATADIR)"
-    ech0
-  fi
-}
-
 function set_log_error() {
   unset DATADIR LOG_ERROR FULL_PATH
   if [ $CAN_CONNECT ]; then
@@ -675,7 +606,6 @@ function collect_logs() {
   cd /var/log/mariadb
 
   ls -1 columnstore/*.log | cpio -pd $LOGSOUTDIR/ 2>/dev/null
-  ls -1 columnstore/*z | cpio -pd $LOGSOUTDIR/ 2>/dev/null
   find columnstore/archive columnstore/install columnstore/trace -mtime -30 | cpio -pd $LOGSOUTDIR/ 2>/dev/null 
   find columnstore/cpimport -mtime -1 | cpio -pd $LOGSOUTDIR/ 2>/dev/null
 
@@ -1017,6 +947,8 @@ function display_outputfile_message() {
 
 function display_help_message() {
   print_color "### HELP ###\n"
+#  ech0 'This script is intended to be run as user root, not sudo.'
+#  ech0 'This script will connect to the database using root@localhost via socket.'
   print0 "This script is intended to be run while logged in as root. 
 If database is up, this script will connect as root@localhost via socket.
 
@@ -1165,11 +1097,6 @@ exists_error_opening_file
 exists_readtomagic_errors
 exists_bad_magic_errors
 exists_got_signal_errors
-exists_errors_pushing_config
-exists_history_failed_getSystemState
-exists_does_not_exist_in_columnstore
-exists_data1_dir_wrong_access_rights
-exists_systemFiles_dir_wrong_access_rights
 
 TEMP_COLOR=lblue; print_color "===================== HOST =====================\n"; unset TEMP_COLOR
 report_machine_architecture
@@ -1185,7 +1112,6 @@ report_versions
 report_slave_hosts
 report_slave_status
 report_db_processes
-report_datadir_size
 TEMP_COLOR=lblue; print_color "===================== COLUMNSTORE =====================\n"; unset TEMP_COLOR
 report_topology
 report_dbroots
