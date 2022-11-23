@@ -441,8 +441,12 @@ function report_columnstore_mounts() {
   DDIR=$(mcsGetConfig SystemConfig DBRoot${i} 2>/dev/null)
     if [ ! -z $DDIR ]; then
       if [ -L $DDIR ]; then
+         if [ $SYMLINKSINPLACE ]; then ech0 '--'; fi
+         RDLINK=$(readlink $DDIR)
+         ech0 "$DDIR is a symbolic link to $RDLINK"
+         COLSTORE_MOUNTS=$(mount | grep $RDLINK)
+         if [ ! -z "$COLSTORE_MOUNTS" ]; then print0 "$COLSTORE_MOUNTS\n"; fi
          SYMLINKSINPLACE=true
-         ech0 "$DDIR is a symbolic link to $(readlink $DDIR)"
       fi
 	fi
 	if [ ! $SYMLINKSINPLACE ]; then print0 "No file system mount with directory name like $CSDIR.\n"; fi
