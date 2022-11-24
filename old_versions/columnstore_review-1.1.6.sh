@@ -448,9 +448,9 @@ function report_columnstore_mounts() {
          if [ ! -z "$COLSTORE_MOUNTS" ]; then print0 "$COLSTORE_MOUNTS\n"; fi
          SYMLINKSINPLACE=true
       fi
-	fi
-	if [ ! $SYMLINKSINPLACE ]; then print0 "No file system mount with directory name like $CSDIR.\n"; fi
+    fi
   done
+  if [ ! $SYMLINKSINPLACE ]; then print0 "No file system mount with directory name like $CSDIR.\n"; fi
   fi
   ech0
 }
