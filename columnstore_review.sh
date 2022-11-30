@@ -368,6 +368,8 @@ function exists_symbolic_links_in_columnstore_dir() {
 }
 
 function exists_schema_out_of_sync() {
+if [ ! $CAN_CONNECT ]; then return; fi
+if [ ! $CS_RUNNING ]; then return; fi
 SQL="SELECT COUNT(*)
 FROM information_schema.COLUMNSTORE_TABLES A
 WHERE NOT EXISTS
