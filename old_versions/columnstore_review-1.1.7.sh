@@ -368,14 +368,16 @@ function exists_symbolic_links_in_columnstore_dir() {
 }
 
 function exists_schema_out_of_sync() {
+if [ ! $CAN_CONNECT ]; then return; fi
+if [ ! $CS_RUNNING ]; then return; fi
 SQL="SELECT COUNT(*)
 FROM information_schema.COLUMNSTORE_TABLES A
 WHERE NOT EXISTS
 (SELECT 'x' FROM information_schema.TABLES B WHERE
 A.TABLE_SCHEMA=B.TABLE_SCHEMA AND A.TABLE_NAME=B.TABLE_NAME
 AND B.ENGINE='Columnstore');"
-COLUMNSTORE_TABLES_NOT_IN_MARIABD=$(mariadb -ABNe "$SQL")
-
+COLUMNSTORE_TABLES_NOT_IN_MARIABD=$(timeout 3 mariadb -ABNe "$SQL")
+if [ ! $COLUMNSTORE_TABLES_NOT_IN_MARIABD ]; then return; fi
 if [ ! "$COLUMNSTORE_TABLES_NOT_IN_MARIABD" == "0" ]; then
   SQL="SELECT TABLE_SCHEMA, TABLE_NAME
 FROM information_schema.COLUMNSTORE_TABLES A
@@ -385,7 +387,7 @@ A.TABLE_SCHEMA=B.TABLE_SCHEMA AND A.TABLE_NAME=B.TABLE_NAME
 AND B.ENGINE='Columnstore');"
   echo >> $WARNFILE
   echo "The following tables exist as Columnstore extents but not in Mariadb as Columnstore tables." >> $WARNFILE
-  echo  "$(mariadb -v -v -v -Ae "$SQL" | sed -nr '/^(\+|^\|)/p')" >> $WARNFILE
+  echo  "$(timeout 3 mariadb -v -v -v -Ae "$SQL" | sed -nr '/^(\+|^\|)/p')" >> $WARNFILE
   echo >> $WARNFILE
 fi
 }
