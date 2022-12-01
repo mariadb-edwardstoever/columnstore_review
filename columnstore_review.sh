@@ -748,14 +748,15 @@ function collect_logs() {
   mkdir -p $LOGSOUTDIR/columnstore
   COMPRESSFILE=$(hostname)_$(date +"%Y-%m-%d-%H-%M-%S")_logs.tar.gz
   set_log_error
-
-  OUTFILE=$LOGSOUTDIR/mariadb/$(hostname)_$(date +"%Y-%m-%d-%H-%M-%S")_$(basename $LOG_ERROR)
-  FILTEREDFILE=$LOGSOUTDIR/mariadb/$(hostname)_$(date +"%Y-%m-%d-%H-%M-%S")_filtered_$(basename $LOG_ERROR)
-  if [ -f $LOG_ERROR ]; then
-    tail -100000 $LOG_ERROR > $OUTFILE
-  fi
-  if [ -f $LOG_ERROR ]; then
-    tail -1000000 $LOG_ERROR | grep -iv "\[warning\]"|grep -iv "\[note\]"  > $FILTEREDFILE
+  if [ $LOG_ERROR ]; then
+    OUTFILE=$LOGSOUTDIR/mariadb/$(hostname)_$(date +"%Y-%m-%d-%H-%M-%S")_$(basename $LOG_ERROR)
+    FILTEREDFILE=$LOGSOUTDIR/mariadb/$(hostname)_$(date +"%Y-%m-%d-%H-%M-%S")_filtered_$(basename $LOG_ERROR)
+    if [ -f $LOG_ERROR ]; then
+      tail -100000 $LOG_ERROR > $OUTFILE
+    fi
+    if [ -f $LOG_ERROR ]; then
+      tail -1000000 $LOG_ERROR | grep -iv "\[warning\]"|grep -iv "\[note\]"  > $FILTEREDFILE
+    fi
   fi
   cp /etc/columnstore/Columnstore.xml $LOGSOUTDIR/columnstore
   find /var/log \( -name "messages" -o -name "messages.1" \) -type f -exec cp {} $LOGSOUTDIR/system \;
