@@ -828,7 +828,7 @@ function collect_logs() {
   fi
   cp /etc/columnstore/Columnstore.xml $LOGSOUTDIR/columnstore
   #  find /var/log \( -name "messages" -o -name "messages.1" \) -type f -exec cp {} $LOGSOUTDIR/system \;
-  cp find /var/log/messages* $LOGSOUTDIR/system
+  cp /var/log/messages* $LOGSOUTDIR/system
   find /var/log/syslog -name syslog -type f -exec tail -10000 {} > $LOGSOUTDIR/system/syslog \;
   find /var/log/daemon.log -name daemon.log -type f -exec tail -10000 {} > $LOGSOUTDIR/system/daemon.log \;
   cd /var/log/mariadb
