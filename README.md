@@ -13,6 +13,8 @@ Switches:
    --notmysqldirs    # searches /var/lib/columnstore for directories not owned by mysql
    --emcheck         # Checks the extent map for orphaned and missing files
    --pscs            # Adds the pscs command. pscs lists running columnstore processes
+   --schemasync      # Fix out-of-sync columnstore tables (CAL0009)
+   --tmpdir          # Ensure owner of temporary dir after reboot (MCOL-4866 & MCOL-5242)
 
 Color output switches:
    --color=none      # print headers without color
