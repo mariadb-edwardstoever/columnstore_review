@@ -6,6 +6,7 @@ If database is up, this script will connect as root@localhost via socket.
 
 Switches:
    --help            # display this message
+   --version         # only show the header with version information
    --logs            # create a compressed archive of logs for MariaDB Support Ticket
    --backupdbrm      # takes a compressed backup of extent map files in dbrm directory
    --testschema      # creates a test schema, tables, imports, queries, drops schema
