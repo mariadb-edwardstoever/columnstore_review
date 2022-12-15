@@ -503,6 +503,9 @@ function report_machine_architecture() {
    print_color "### Machine Architecture ###\n"
    if [ "$(grep docker /proc/1/cgroup 2>/dev/null)" ]; then
      ARCH="Docker Container"
+   elif
+   if [ "$(grep kube /proc/1/cgroup 2>/dev/null)" ]; then
+     ARCH="Kubernetes"
    else
      ARCH=$(hostnamectl | grep -E "(Static|Chassis|Virtualization|Operat|Kernel|Arch)" 2>/dev/null)
    fi
