@@ -10,9 +10,11 @@ Switches:
    --logs            # create a compressed archive of logs for MariaDB Support Ticket
    --backupdbrm      # takes a compressed backup of extent map files in dbrm directory
    --testschema      # creates a test schema, tables, imports, queries, drops schema
+   --testschemakeep  # creates a test schema, tables, imports, queries, does not drop
    --emptydirs       # searches /var/lib/columnstore for empty directories
    --notmysqldirs    # searches /var/lib/columnstore for directories not owned by mysql
    --emcheck         # Checks the extent map for orphaned and missing files
+   --s3check         # Checks the extent map against S3 storage
    --pscs            # Adds the pscs command. pscs lists running columnstore processes
    --schemasync      # Fix out-of-sync columnstore tables (CAL0009)
    --tmpdir          # Ensure owner of temporary dir after reboot (MCOL-4866 & MCOL-5242)
