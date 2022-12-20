@@ -11,6 +11,8 @@ Switches:
    --backupdbrm      # takes a compressed backup of extent map files in dbrm directory
    --testschema      # creates a test schema, tables, imports, queries, drops schema
    --testschemakeep  # creates a test schema, tables, imports, queries, does not drop
+   --ldlischema      # using ldli, creates test schema, tables, imports, queries, drops schema
+   --ldlischemakeep  # using ldli, creates test schema, tables, imports, queries, does not drop
    --emptydirs       # searches /var/lib/columnstore for empty directories
    --notmysqldirs    # searches /var/lib/columnstore for directories not owned by mysql
    --emcheck         # Checks the extent map for orphaned and missing files
