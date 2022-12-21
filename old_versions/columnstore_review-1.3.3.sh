@@ -896,6 +896,7 @@ function empty_directories(){
 }
 
 function not_mysql_directories(){
+  if [ -f /mnt/skysql/podinfo/namespace ] && [ -f /mnt/skysql/podinfo/podname ]; then print0 "This is not required for SkySQL instances.\n\n"; return; fi
   DATA1DIR=$(mcsGetConfig SystemConfig DBRoot1 2>/dev/null) || DATA1DIR=/var/lib/columnstore/data1
   COLUMNSTOREDIR=$(dirname $DATA1DIR)
   print0 "There should not be any directores in $COLUMNSTOREDIR that are not owned by mysql.\n"
