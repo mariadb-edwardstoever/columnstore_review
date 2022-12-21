@@ -135,6 +135,7 @@ function exists_errors_pushing_config() {
 }
 
 function exists_columnstore_tmp_files_wrong_owner() {
+  if [ -f /mnt/skysql/podinfo/namespace ] && [ -f /mnt/skysql/podinfo/podname ]; then return; fi #if SkySQL, ignore this
   TMP_DIR=$(mcsGetConfig SystemConfig SystemTempFileDir)
   if [ -d $TMP_DIR ]; then
     DIR_OWNER=$(stat -c '%U' $TMP_DIR)
