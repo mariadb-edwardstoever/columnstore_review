@@ -1066,6 +1066,9 @@ fi
 }
 
 function backup_dbrm() {
+  STORAGE_TYPE=$(grep service /etc/columnstore/storagemanager.cnf | grep -v "^\#" | grep "\=" | awk -F= '{print $2}' | xargs)
+  if [ "$(echo $STORAGE_TYPE | awk '{print tolower($0)}')" == "s3" ]; then print0 "This is node uses S3 storage for Columnstore. Exiting.\n\n"; return; fi
+
 if [[ ! "$(ps -ef | grep -E "(PrimProc|ExeMgr|DMLProc|DDLProc|WriteEngineServer|StorageManager|controllernode|workernode)" | grep -v "grep"|wc -l)" == "0" ]]; then
   CS_RUNNING=true
 fi
