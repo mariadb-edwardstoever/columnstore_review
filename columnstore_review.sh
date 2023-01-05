@@ -1733,7 +1733,7 @@ esac
   mariadb -ABNe "$SQL" >> $OUTPUTSQLFILE
 if [ "$CHARSET" == "UTF8MB4" ]; then
   SQL="SELECT 
-CONCAT('create table if not exists \`',TABLE_SCHEMA,'\`.\`',TABLE_NAME,'\` (', 
+CONCAT('create schema if not exists \`',TABLE_SCHEMA,'\`; create table if not exists \`',TABLE_SCHEMA,'\`.\`',TABLE_NAME,'\` (', 
   GROUP_CONCAT('\`',COLUMN_NAME,'\` ',
     case DATA_TYPE 
     when 'medint' then CONCAT('mediumint')
@@ -1773,7 +1773,7 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;"
 fi 
 if [ "$CHARSET" == "LATIN1" ]; then
   SQL="SELECT
-CONCAT('create table if not exists \`',TABLE_SCHEMA,'\`.\`',TABLE_NAME,'\` (',
+CONCAT('create schema if not exists \`',TABLE_SCHEMA,'\`; create table if not exists \`',TABLE_SCHEMA,'\`.\`',TABLE_NAME,'\` (',
   GROUP_CONCAT('\`',COLUMN_NAME,'\` ',
     case DATA_TYPE
     when 'medint' then CONCAT('mediumint')
