@@ -272,6 +272,7 @@ function exists_compression_header_errors() {
 }
 
 function exists_history_failed_getSystemState() {
+   return; # This is inconsequential. Not going to do anything here until further notice. 
    FAILED_GETSYSTEMSTATE=$(find /var/log/mariadb/columnstore/ -name "debug.log*" ! -name "*gz" | xargs grep 'SessionManager::getSystemState() failed (network)' | wc -l)
    if [ ! "$FAILED_GETSYSTEMSTATE" == "0" ]; then
      echo "Errors found in debug logs: getSystemState failed. MariaDB and Columnstore may not be communicating." >> $WARNFILE
