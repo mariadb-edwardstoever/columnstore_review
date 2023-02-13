@@ -703,15 +703,11 @@ function report_dbroots() {
 function report_brm_saves_current() {
   if [ ! $CS_INSTALLED ]; then return; fi
   STORAGE_TYPE=$(grep service /etc/columnstore/storagemanager.cnf | grep -v "^\#" | grep "\=" | awk -F= '{print $2}' | xargs | awk '{print tolower($0)}')
-  set_data1dir
+  if [ ! "$STORAGE_TYPE" == "localstorage" ]; then return; fi
   print_color "### Current BRM Files ###\n"
-  if [ "$STORAGE_TYPE" == "localstorage" ]; then
-    BRMSAV=$(cat $DATA1DIR/systemFiles/dbrm/BRM_saves_current || ech0 'BRM_saves_current does not exist.')
-    print0 "$BRMSAV\n"
-  else
-    BRMSAV=$(cat $DATA1DIR/systemFiles/dbrm/BRM_saves_current.meta || ech0 'BRM_saves_current does not exist.')
-    print0 "$BRMSAV\n"
-  fi
+  DATA1DIR=$(mcsGetConfig SystemConfig DBRoot1 2>/dev/null) || DATA1DIR=/var/lib/columnstore/data1
+  BRMSAV=$(cat $DATA1DIR/systemFiles/dbrm/BRM_saves_current || ech0 'BRM_saves_current does not exist.')
+  print0 "$BRMSAV\n"
   ech0
 }
 
