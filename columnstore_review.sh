@@ -872,7 +872,13 @@ function collect_logs() {
     fi
   fi
   cp /etc/columnstore/Columnstore.xml $LOGSOUTDIR/columnstore
-  DATA1DIR=$(mcsGetConfig SystemConfig DBRoot1 2>/dev/null) || DATA1DIR=/var/lib/columnstore/data1
+
+  STORAGE_TYPE=$(grep service /etc/columnstore/storagemanager.cnf | grep -v "^\#" | grep "\=" | awk -F= '{print $2}' | xargs)
+  if [ "$(echo $STORAGE_TYPE | awk '{print tolower($0)}')" == "s3" ]; then 
+    DATA1DIR=/var/lib/columnstore/storagemanager/metadata/data1/systemFiles/dbrm
+  else
+    DATA1DIR=$(mcsGetConfig SystemConfig DBRoot1 2>/dev/null) || DATA1DIR=/var/lib/columnstore/data1
+  fi
   ls -lrt $DATA1DIR/systemFiles/dbrm > $LOGSOUTDIR/columnstore/ls_lrt_dbrm.txt
 
   #  find /var/log \( -name "messages" -o -name "messages.1" \) -type f -exec cp {} $LOGSOUTDIR/system \;
