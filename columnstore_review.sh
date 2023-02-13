@@ -342,7 +342,7 @@ function exists_holding_table_lock() {
 }
 
 function exists_data1_dir_wrong_access_rights() {
-  DATA1DIR=$(mcsGetConfig SystemConfig DBRoot1 2>/dev/null) || DATA1DIR=/var/lib/columnstore/data1
+  set_data1dir
   if [ -L $DATA1DIR ]; then return; fi # if a symbolic link, then ignore this
   DATA1DIR_ACCESS_RIGHTS=$(stat -c "%a" $DATA1DIR)
   if [ ! "$DATA1DIR_ACCESS_RIGHTS" == "1755" ]; then
@@ -351,7 +351,7 @@ function exists_data1_dir_wrong_access_rights() {
 }
 
 function exists_systemFiles_dir_wrong_access_rights() {
-  DATA1DIR=$(mcsGetConfig SystemConfig DBRoot1 2>/dev/null) || DATA1DIR=/var/lib/columnstore/data1
+  set_data1dir
   SYSTEMFILES=$DATA1DIR/systemFiles
   SYSTEMFILES_ACCESS_RIGHTS=$(stat -c "%a" $SYSTEMFILES)
   if [ ! "$SYSTEMFILES_ACCESS_RIGHTS" == "1755" ]; then
@@ -373,7 +373,7 @@ function exists_cpu_unsupported_2208() {
 }
 
 function exists_symbolic_links_in_columnstore_dir() {
-  DATA1DIR=$(mcsGetConfig SystemConfig DBRoot1 2>/dev/null) || DATA1DIR=/var/lib/columnstore/data1
+  set_data1dir
   COLUMNSTOREDIR=$(dirname $DATA1DIR)
   SYMLINKS=$(find $COLUMNSTOREDIR -maxdepth 2 -type l | wc -l)
   if [ ! "$SYMLINKS" == "0" ]; then
@@ -567,7 +567,7 @@ function report_memory_info() {
 }
 
 function report_columnstore_mounts() {
-  DATA1DIR=$(mcsGetConfig SystemConfig DBRoot1 2>/dev/null) || DATA1DIR=/var/lib/columnstore/data1
+  set_data1dir
   CSDIR=$(basename $(dirname $DATA1DIR))
   print_color "### Columnstore Mounts ###\n"
   COLSTORE_MOUNTS=$(mount | grep $CSDIR)
@@ -699,7 +699,7 @@ function report_brm_saves_current() {
   STORAGE_TYPE=$(grep service /etc/columnstore/storagemanager.cnf | grep -v "^\#" | grep "\=" | awk -F= '{print $2}' | xargs | awk '{print tolower($0)}')
   if [ ! "$STORAGE_TYPE" == "localstorage" ]; then return; fi
   print_color "### Current BRM Files ###\n"
-  DATA1DIR=$(mcsGetConfig SystemConfig DBRoot1 2>/dev/null) || DATA1DIR=/var/lib/columnstore/data1
+  set_data1dir
   BRMSAV=$(cat $DATA1DIR/systemFiles/dbrm/BRM_saves_current || ech0 'BRM_saves_current does not exist.')
   print0 "$BRMSAV\n"
   ech0
@@ -834,6 +834,15 @@ function report_datadir_size() {
   fi
 }
 
+function set_data1dir() {
+  STORAGE_TYPE=$(grep service /etc/columnstore/storagemanager.cnf | grep -v "^\#" | grep "\=" | awk -F= '{print $2}' | xargs)
+  if [ "$(echo $STORAGE_TYPE | awk '{print tolower($0)}')" == "s3" ]; then
+    DATA1DIR=/var/lib/columnstore/storagemanager/metadata/data1
+  else
+    DATA1DIR=$(mcsGetConfig SystemConfig DBRoot1 2>/dev/null) || DATA1DIR=/var/lib/columnstore/data1
+  fi
+}
+
 function set_log_error() {
   unset DATADIR LOG_ERROR FULL_PATH
   if [ $CAN_CONNECT ]; then
@@ -873,12 +882,7 @@ function collect_logs() {
   fi
   cp /etc/columnstore/Columnstore.xml $LOGSOUTDIR/columnstore
 
-  STORAGE_TYPE=$(grep service /etc/columnstore/storagemanager.cnf | grep -v "^\#" | grep "\=" | awk -F= '{print $2}' | xargs)
-  if [ "$(echo $STORAGE_TYPE | awk '{print tolower($0)}')" == "s3" ]; then 
-    DATA1DIR=/var/lib/columnstore/storagemanager/metadata/data1/systemFiles/dbrm
-  else
-    DATA1DIR=$(mcsGetConfig SystemConfig DBRoot1 2>/dev/null) || DATA1DIR=/var/lib/columnstore/data1
-  fi
+  set_data1dir
   ls -lrt $DATA1DIR/systemFiles/dbrm > $LOGSOUTDIR/columnstore/ls_lrt_dbrm.txt
 
   #  find /var/log \( -name "messages" -o -name "messages.1" \) -type f -exec cp {} $LOGSOUTDIR/system \;
@@ -917,7 +921,7 @@ function collect_logs() {
 }
 
 function empty_directories(){
-  DATA1DIR=$(mcsGetConfig SystemConfig DBRoot1 2>/dev/null) || DATA1DIR=/var/lib/columnstore/data1
+  set_data1dir
   COLUMNSTOREDIR=$(dirname $DATA1DIR)
   print0 "Empty directories in $COLUMNSTOREDIR can be caused by failed runs of cpimport.\nThey are not necessarily a serious issue.\n"
   ech0
@@ -930,7 +934,7 @@ function empty_directories(){
 
 function not_mysql_directories(){
   if [ -f /mnt/skysql/podinfo/namespace ] && [ -f /mnt/skysql/podinfo/podname ]; then print0 "This is not required for SkySQL instances.\n\n"; return; fi
-  DATA1DIR=$(mcsGetConfig SystemConfig DBRoot1 2>/dev/null) || DATA1DIR=/var/lib/columnstore/data1
+  set_data1dir
   COLUMNSTOREDIR=$(dirname $DATA1DIR)
   print0 "There should not be any directores in $COLUMNSTOREDIR that are not owned by mysql.\n"
   ech0
@@ -1121,7 +1125,7 @@ fi
   else
     COMPRESSFILE=$(hostname)_s_$(date +"%Y-%m-%d-%H-%M-%S")_dbrm.tar.gz
   fi
-  DATA1DIR=$(mcsGetConfig SystemConfig DBRoot1 2>/dev/null) || DATA1DIR=/var/lib/columnstore/data1
+  set_data1dir
   cd $DATA1DIR/systemFiles
   tar -czf /tmp/$COMPRESSFILE ./dbrm
   cd - 1>/dev/null
@@ -1209,7 +1213,7 @@ FILE_ALL_FILES=$EMOUTDIR/all_files_$DT.txt; touch $FILE_ALL_FILES; truncate -s0 
 MISSING_FILES=$EMOUTDIR/missing_files_$DT.txt; touch $MISSING_FILES; truncate -s0 $MISSING_FILES
 MISSING_OIDS=$EMOUTDIR/oids_missing_files_$DT.txt; touch $MISSING_OIDS; truncate -s0 $MISSING_OIDS
 
-DATA1DIR=$(mcsGetConfig SystemConfig DBRoot1 2>/dev/null) || DATA1DIR=/var/lib/columnstore/data1
+set_data1dir
 COLUMNSTOREDIR=$(dirname $DATA1DIR)
 PLSCRIPT="my (\$pn) = \$ARGV[0];
 @parts = split(/\|/, \$pn);
@@ -1261,7 +1265,7 @@ fi
   if [ "$APPROX_FILE_SIZE" -lt "1000" ]; then
     TEMP_COLOR=lred; print_color "The output for extent map files is too small. "; unset TEMP_COLOR; print0 "Something went wrong. Exiting\n\n"; exit 0;
   fi
-  DATA1DIR=$(mcsGetConfig SystemConfig DBRoot1 2>/dev/null) || DATA1DIR=/var/lib/columnstore/data1
+  set_data1dir
   COLUMNSTOREDIR=$(dirname $DATA1DIR)
   find -L $COLUMNSTOREDIR -iname "FILE[0-9][0-9][0-9].cdf" -type f >> $FILE_ALL_FILES
 
@@ -1422,7 +1426,7 @@ MISSING_OIDS=$S3OUTDIR/oids_missing_meta_files_$DT.txt; touch $MISSING_OIDS; tru
 ALL_META_KEYS=$S3OUTDIR/all_meta_keys_$DT.txt; touch $ALL_META_KEYS; truncate -s0 $ALL_META_KEYS
 S3_KEYS=$S3OUTDIR/s3_keys_$DT.txt; touch $S3_KEYS; truncate -s0 $S3_KEYS
 
-DATA1DIR=$(mcsGetConfig SystemConfig DBRoot1 2>/dev/null) || DATA1DIR=/var/lib/columnstore/data1
+set_data1dir
 COLUMNSTOREDIR="$(dirname $DATA1DIR)/storagemanager/metadata"
 PLSCRIPT="my (\$pn) = \$ARGV[0];
 @parts = split(/\|/, \$pn);
@@ -1958,7 +1962,7 @@ function display_outputfile_message() {
 }
 
 function display_help_message() {
-  DATA1DIR=$(mcsGetConfig SystemConfig DBRoot1 2>/dev/null) || DATA1DIR=/var/lib/columnstore/data1
+  set_data1dir
   COLUMNSTOREDIR=$(dirname $DATA1DIR) || COLUMNSTOREDIR=/var/lib/columnstore
   print_color "### HELP ###\n"
   print0 "This script is intended to be run while logged in as root. 
