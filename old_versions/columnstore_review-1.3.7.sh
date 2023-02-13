@@ -834,7 +834,7 @@ function report_datadir_size() {
   set_log_error
   if [ ! $DATADIR ]; then return; fi
   if [ -d $DATADIR ]; then
-    print_color "### Mariadb Datadir Size ###\n"
+    print_color "### Mariadb Datadir Size (File space usage) ###\n"
     ech0 "$(du -sh $DATADIR)"
     ech0
   fi
