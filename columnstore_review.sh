@@ -342,6 +342,9 @@ function exists_holding_table_lock() {
 }
 
 function exists_data1_dir_wrong_access_rights() {
+  STORAGE_TYPE=$(grep service /etc/columnstore/storagemanager.cnf | grep -v "^\#" | grep "\=" | awk -F= '{print $2}' | xargs)
+  if [ "$(echo $STORAGE_TYPE | awk '{print tolower($0)}')" == "s3" ]; then return; fi
+
   set_data1dir
   if [ -L $DATA1DIR ]; then return; fi # if a symbolic link, then ignore this
   DATA1DIR_ACCESS_RIGHTS=$(stat -c "%a" $DATA1DIR)
@@ -351,6 +354,9 @@ function exists_data1_dir_wrong_access_rights() {
 }
 
 function exists_systemFiles_dir_wrong_access_rights() {
+  STORAGE_TYPE=$(grep service /etc/columnstore/storagemanager.cnf | grep -v "^\#" | grep "\=" | awk -F= '{print $2}' | xargs)
+  if [ "$(echo $STORAGE_TYPE | awk '{print tolower($0)}')" == "s3" ]; then return; fi
+
   set_data1dir
   SYSTEMFILES=$DATA1DIR/systemFiles
   SYSTEMFILES_ACCESS_RIGHTS=$(stat -c "%a" $SYSTEMFILES)
