@@ -398,7 +398,7 @@ function exists_erroneous_module() {
     echo "The file /var/lib/columnstore/local/module does not exist." >> $WARNFILE;
     return;
   fi
-  LOCAL_MODULE=$(cat /var/lib/columnstore/local/module)
+  LOCAL_MODULE=$(cat /var/lib/columnstore/local/module | xargs)
   CMD=$(printf ${LOCAL_MODULE}_WriteEngineServer)
   IP_SHOULD_BE=$(mcsGetConfig $CMD IPAddr)
   if [ ! "$(ip a | grep $IP_SHOULD_BE)" ]; then 
