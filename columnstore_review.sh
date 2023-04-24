@@ -1,7 +1,7 @@
 #!/bin/bash
 # columnstore_review.sh
 # script by Edward Stoever for MariaDB support
-VERSION=1.4.0
+VERSION=1.4.1
 
 function prepare_for_run() {
   unset ERR
@@ -393,6 +393,19 @@ function exists_any_idb_errors() {
    fi
 }
 
+function exists_erroneous_module() {
+  if [ ! -f /var/lib/columnstore/local/module ]; then
+    echo "The file /var/lib/columnstore/local/module does not exist." >> $WARNFILE;
+    return;
+  fi
+  LOCAL_MODULE=$(cat /var/lib/columnstore/local/module)
+  CMD=$(printf ${LOCAL_MODULE}_WriteEngineServer)
+  IP_SHOULD_BE=$(mcsGetConfig $CMD IPAddr)
+  if [ ! "$(ip a | grep $IP_SHOULD_BE)" ]; then 
+    echo "module file shows $LOCAL_MODULE which does not match IP Address in Columnstore.xml." >> $WARNFILE;
+  fi
+}
+
 function exists_cpu_unsupported_2208() {
   if [ -z $(cat /proc/cpuinfo | grep -E 'sse4_2|neon|asimd' | head -c1) ]; then
     echo "The machine CPU lacks of support for Intel SSE4.2 or ARM Advanced SIMD, required for Columnstore 22.08+." >> $WARNFILE
@@ -697,7 +710,7 @@ function report_topology() {
   if [ ! "$PM1" == "127.0.0.1" ] && [ ! -z $PM2 ]; then
     THISISCLUSTER=true
     print0 "Cluster\n"
-    THISHOSTIPS="$(hostname -i)"
+    THISHOSTIPS="$(hostname -i| awk '{print $1}')"
     for ((i=1;i<=9;i++)); do
       IPADDRESS=$(mcsGetConfig pms${i} ipaddr)
       if [ $IPADDRESS ]; then
@@ -927,9 +940,7 @@ function collect_logs() {
     fi
   fi
   cp /etc/columnstore/Columnstore.xml $LOGSOUTDIR/columnstore
-  if [ $(which zip 2>/dev/null) ]; then 
-    zip -r $LOGSOUTDIR/columnstore/etc_columnstore.zip /etc/columnstore/* 1>/dev/null 2>&1; 
-  fi
+  tar cf $LOGSOUTDIR/columnstore/etc_columnstore.tar /etc/columnstore/ 1>/dev/null 2>&1
 
   set_data1dir
   ls -lrt $DATA1DIR/systemFiles/dbrm > $LOGSOUTDIR/columnstore/ls_lrt_dbrm.txt
@@ -2193,6 +2204,7 @@ exists_schema_out_of_sync
 exists_columnstore_tables_with_no_extents
 exists_storage_manager_errors
 exists_flooding_query_in_debug
+exists_erroneous_module
 
 TEMP_COLOR=lblue; print_color "===================== HOST =====================\n"; unset TEMP_COLOR
 report_machine_architecture
