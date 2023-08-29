@@ -1,5 +1,14 @@
 # Columnstore Review
 Review MariaDB Columnstore for Support
+
+To download the columnstore_review script direct to your linux server, you may use git or wget:
+```
+git clone https://github.com/mariadb-edwardstoever/columnstore_review.git
+```
+```
+wget https://github.com/mariadb-edwardstoever/columnstore_review/archive/refs/heads/main.zip
+```
+
 ```
 This script is intended to be run while logged in as root.
 If database is up, this script will connect as root@localhost via socket.
