@@ -1,7 +1,7 @@
 #!/bin/bash
 # columnstore_review.sh
 # script by Edward Stoever for MariaDB support
-VERSION=1.4.2
+VERSION=1.4.3
 
 function prepare_for_run() {
   unset ERR
@@ -935,6 +935,12 @@ function set_log_error() {
   fi
 }
 
+function dump_log () {
+    name=$1
+    path=$2
+    journalctl -u "$name".service > $path/"${name}".log
+}
+
 function collect_logs() {
   LOGSOUTDIR=/tmp/columnstore_review/logs_$(date +"%m-%d-%H-%M-%S")/$(hostname)
   mkdir -p $LOGSOUTDIR || ech0 'Cannot create temporary directory for logs.';
@@ -956,6 +962,14 @@ function collect_logs() {
   fi
   cp /etc/columnstore/Columnstore.xml $LOGSOUTDIR/columnstore
   tar cf $LOGSOUTDIR/columnstore/etc_columnstore.tar /etc/columnstore/ 1>/dev/null 2>&1
+  dump_log "mariadb" $LOGSOUTDIR/columnstore/
+  dump_log "mcs-ddlproc" $LOGSOUTDIR/columnstore/
+  dump_log "mcs-dmlproc" $LOGSOUTDIR/columnstore/
+  dump_log "mcs-loadbrm" $LOGSOUTDIR/columnstore/
+  dump_log "mcs-primproc" $LOGSOUTDIR/columnstore/
+  dump_log "mcs-workernode@1" $LOGSOUTDIR/columnstore/
+  dump_log "mcs-writeengineserver" $LOGSOUTDIR/columnstore/
+  dump_log "mcs-controllernode" $LOGSOUTDIR/columnstore/
 
   set_data1dir
   ls -lrt $DATA1DIR/systemFiles/dbrm > $LOGSOUTDIR/columnstore/ls_lrt_dbrm.txt
@@ -984,7 +998,7 @@ function collect_logs() {
   tar -czf /tmp/$COMPRESSFILE ./*
   cd - 1>/dev/null 
   print_color "### COLLECTED LOGS FOR SUPPORT TICKET ###\n"
-  ech0 "Attach file /tmp/$COMPRESSFILE to your support ticket."
+  ech0 "Attach the following tar file to your support ticket."
   if [ $THISISCLUSTER ]; then
     ech0 "Please collect logs with this script from each node in your cluster."
   fi
@@ -992,6 +1006,7 @@ function collect_logs() {
   if (( $FILE_SIZE > 52428800 )); then
     print0 "The file /tmp/$COMPRESSFILE is larger than 50MB.\nPlease use MariaDB Large file upload at https://mariadb.com/upload/\nInform us about the upload in the support ticket."
   fi 
+  print0 "\nCreated: /tmp/$COMPRESSFILE\n"
   ech0
 }
 
