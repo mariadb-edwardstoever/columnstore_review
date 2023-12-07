@@ -1,7 +1,7 @@
 #!/bin/bash
 # columnstore_review.sh
 # script by Edward Stoever for MariaDB support
-VERSION=1.4.3
+VERSION=1.4.4
 
 function prepare_for_run() {
   unset ERR
@@ -978,12 +978,19 @@ function collect_logs() {
     smcat /data1/systemFiles/dbrm/BRM_saves_current 2>/dev/null > $LOGSOUTDIR/columnstore/s3_BRM_saves_current ;
   fi
 
-  #  find /var/log \( -name "messages" -o -name "messages.1" \) -type f -exec cp {} $LOGSOUTDIR/system \;
+
+  # System Logs
+  if [ -f "/proc/sys/kernel/threads-max" ]; then cp /proc/sys/kernel/threads-max $LOGSOUTDIR/system/kernal-threads-max; fi;
+  if [ -f "/proc/sys/kernel/pid_max" ]; then cp /proc/sys/kernel/pid_max $LOGSOUTDIR/system/kernal-pid_max; fi;
+  if [ -f "/proc/sys/vm/max_map_count" ]; then cp /proc/sys/vm/max_map_count $LOGSOUTDIR/system/kernal-max_map_count; fi;
   if [ -f "/var/log/messages" ]; then cp /var/log/messages* $LOGSOUTDIR/system; fi;
   if [ -f "/var/log/syslog" ]; then find /var/log/syslog -name syslog -type f -exec tail -10000 {} > $LOGSOUTDIR/system/syslog \;; fi;
   if [ -f "/var/log/daemon.log" ]; then find /var/log/daemon.log -name daemon.log -type f -exec tail -10000 {} > $LOGSOUTDIR/system/daemon.log \;; fi;
+  if command -v ulimit >/dev/null 2>&1; then
+      ulimit -a >  $LOGSOUTDIR/system/kernal-ulimits.txt
+  fi
+  
   cd /var/log/mariadb
-
   find /usr/lib -name "mcs*service" -exec cp {} $LOGSOUTDIR/systemd \;
   find /usr/lib -name "mariadb*service" -exec cp {} $LOGSOUTDIR/systemd \;
 
