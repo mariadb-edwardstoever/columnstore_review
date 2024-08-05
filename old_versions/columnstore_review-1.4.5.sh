@@ -1,7 +1,7 @@
 #!/bin/bash
 # columnstore_review.sh
 # script by Edward Stoever for MariaDB support
-VERSION=1.4.6
+VERSION=1.4.5
 
 function prepare_for_run() {
   unset ERR
@@ -984,9 +984,7 @@ function collect_logs() {
   if [ -f "/proc/sys/kernel/threads-max" ]; then cp /proc/sys/kernel/threads-max $LOGSOUTDIR/system/kernal-threads-max; fi;
   if [ -f "/proc/sys/kernel/pid_max" ]; then cp /proc/sys/kernel/pid_max $LOGSOUTDIR/system/kernal-pid_max; fi;
   if [ -f "/proc/sys/vm/max_map_count" ]; then cp /proc/sys/vm/max_map_count $LOGSOUTDIR/system/kernal-max_map_count; fi;
-  #   if [ -f "/var/log/messages" ]; then cp /var/log/messages* $LOGSOUTDIR/system; fi;  # TOO MUCH COLLECTED...
-  find /var/log -name "messages*" -mtime -5 -type f -exec cp {} $LOGSOUTDIR/system \; 2>/dev/null
-
+  if [ -f "/var/log/messages" ]; then cp /var/log/messages* $LOGSOUTDIR/system; fi;
   if [ -f "/var/log/syslog" ]; then find /var/log/syslog -name syslog -type f -exec tail -10000 {} > $LOGSOUTDIR/system/syslog \;; fi;
   if [ -f "/var/log/daemon.log" ]; then find /var/log/daemon.log -name daemon.log -type f -exec tail -10000 {} > $LOGSOUTDIR/system/daemon.log \;; fi;
   if command -v ulimit >/dev/null 2>&1; then
@@ -1000,9 +998,7 @@ function collect_logs() {
   ls -1 columnstore/*.log 2>/dev/null | cpio -pd $LOGSOUTDIR/ 2>/dev/null
   ls -1 columnstore/*z 2>/dev/null | cpio -pd $LOGSOUTDIR/ 2>/dev/null
   find columnstore/archive columnstore/install columnstore/trace -mtime -30 | cpio -pd $LOGSOUTDIR/ 2>/dev/null 
-  #  find columnstore/cpimport -mtime -1 | cpio -pd $LOGSOUTDIR/ 2>/dev/null   # COLLECTS TOO MUCH
-  find columnstore/cpimport -name "*.err" -size +0 -mtime -2 | cpio -pd $LOGSOUTDIR/ 2>/dev/null
-
+  find columnstore/cpimport -mtime -1 | cpio -pd $LOGSOUTDIR/ 2>/dev/null
 
   if [ $CAN_CONNECT ]; then
     mariadb -ABNe "show global variables" > $LOGSOUTDIR/mariadb/$(hostname)_global_variables.txt 2>/dev/null
