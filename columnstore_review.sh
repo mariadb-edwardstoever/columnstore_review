@@ -1,7 +1,7 @@
 #!/bin/bash
 # columnstore_review.sh
 # script by Edward Stoever for MariaDB support
-VERSION=1.4.7
+VERSION=1.4.8
 
 function prepare_for_run() {
   unset ERR
@@ -2139,7 +2139,9 @@ if [ ! "$PM1" == "127.0.0.1" ] && [ ! -z $PM2 ]; then
 fi
 
 if [ "$COUNT_ANY_STRAGGLERS" == "0" ]; then
-  TEMP_COLOR=lred; print_color "Columnstore processes are not running."; unset TEMP_COLOR
+  TEMP_COLOR=lred; print_color "Columnstore processes are not running.\n"; unset TEMP_COLOR
+  clearShm
+  TEMP_COLOR=lcyan; print_color "Columnstore shared memory cleared.\n";  unset TEMP_COLOR
   print0 "\nExiting.\n\n";  exit 0
 fi
 
@@ -2148,7 +2150,7 @@ if [ $THISISCLUSTER ] && [ "$COUNT_ANY_STRAGGLERS" != "0" ]; then
 fi
 
 
-TEMP_COLOR=lcyan; print_color "Press c to stop all columnstore processes.\n"; unset TEMP_COLOR
+TEMP_COLOR=lcyan; print_color "Press c to stop all columnstore processes on this node.\n"; unset TEMP_COLOR
 
 read -s -n 1 RESPONSE
   if [ "$RESPONSE" == "c" ]; then
@@ -2184,6 +2186,8 @@ read -s -n 1 RESPONSE
   
   if [ "$COUNT_ANY_STRAGGLERS" == "0" ]; then
     ech0 "No columnstore processes running."
+    clearShm
+    TEMP_COLOR=lcyan; print_color "Columnstore shared memory cleared.\n";  unset TEMP_COLOR
   else
     ech0 "After two attempts to kill all Columnstore processes, this is still running:"
     ps -ef | grep -E '(PrimProc|ExeMgr|DMLProc|DDLProc|WriteEngineServer|StorageManager|controllernode|workernode|load_brm)' | grep -v "grep"
