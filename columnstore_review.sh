@@ -1,7 +1,7 @@
 #!/bin/bash
 # columnstore_review.sh
 # script by Edward Stoever for MariaDB support
-VERSION=1.4.9
+VERSION=1.4.10
 
 function prepare_for_run() {
   unset ERR
@@ -968,6 +968,7 @@ function collect_logs() {
   dump_log "mcs-loadbrm" $LOGSOUTDIR/columnstore/
   dump_log "mcs-primproc" $LOGSOUTDIR/columnstore/
   dump_log "mcs-workernode@1" $LOGSOUTDIR/columnstore/
+  dump_log "mcs-workernode@2" $LOGSOUTDIR/columnstore/
   dump_log "mcs-writeengineserver" $LOGSOUTDIR/columnstore/
   dump_log "mcs-controllernode" $LOGSOUTDIR/columnstore/
 
