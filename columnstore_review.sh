@@ -1004,6 +1004,9 @@ function collect_logs() {
   #  find columnstore/cpimport -mtime -1 | cpio -pd $LOGSOUTDIR/ 2>/dev/null   # COLLECTS TOO MUCH
   find columnstore/cpimport -name "*.err" -size +0 -mtime -2 | cpio -pd $LOGSOUTDIR/ 2>/dev/null
 
+  #collect ports Status
+  check_ports > $LOGSOUTDIR/mariadb/$(hostname)_ports_check.txt 2>/dev/null
+
 
   if [ $CAN_CONNECT ]; then
     mariadb -ABNe "show global variables" > $LOGSOUTDIR/mariadb/$(hostname)_global_variables.txt 2>/dev/null
@@ -2064,6 +2067,116 @@ function ensure_owner_privs_of_tmp_dir() {
   
 }
 
+
+function check_ports(){
+	# Check if nmap is installed
+	if ! command -v nmap &> /dev/null; then
+		echo "Error: nmap is not installed. Please install nmap and try again."
+		return
+	fi
+
+	# Define the ports to check
+	ports="8600,8601,8602,8603,8604,8605,8606,8607,8608,8609,8610,8611,8612,8613,8614,8615,8616,8617,8618,8619,8620,8630,8700,8800,3306,8999"
+
+	# Get the local node from the file
+	my_node=$(cat /var/lib/columnstore/local/module)
+
+	# Get the hostname and local IP address of the machine
+	hostname=$(hostname)
+	local_ip=$(hostname -I | awk '{print $1}')
+
+	# Extract IPs from Columnstore.xml, handling special characters like \r, \n, and \t
+	ips=$(grep -A 1 "_WriteEngineServer" /etc/columnstore/Columnstore.xml \
+	| sed "/${my_node}_WriteEngineServer/,+0d" \
+	| grep "<IPAddr>" \
+	| tr -d '\r\n\t' \
+	| sed -e 's/<IPAddr>//g' -e 's/<\/IPAddr>//g' -e 's/^[ \t]*//' -e 's/[ \t]*$//' \
+	| sort -u)
+
+	# Extract IPAddr:Port pairs from the XML file, removing \r, \n, and \t
+	local_ports=$(grep -E "<IPAddr>|<Port>" /etc/columnstore/Columnstore.xml \
+	| tr -d '\r\n\t' \
+	| sed -e 's/<\/\?IPAddr>//g' -e 's/<\/\?Port>//g' \
+	| awk 'NR%2{printf "%s:", $0; next;} 1')
+
+	pass=true
+
+	# Function to check if a port is available to use
+	check_port_nmap_available_to_use() {
+		ip=$1
+		port=$2
+
+		# Use nmap to check the port status
+		result=$(nmap -p $port $ip | grep "$port" | awk '{print $2}')
+
+		if [ "$result" = "open" ]; then
+			echo "$ip:$port - Port is open: SUCCESS"
+		elif [ "$result" = "closed" ]; then
+			echo "$ip:$port - Port is closed and not firewalled: SUCCESS"
+		elif [ "$result" = "filtered" ]; then
+			echo "$ip:$port - Port is filtered (firewalled or blocked): ERROR"
+			pass=false
+		else
+			echo "$ip:$port - Unknown port status: ERROR"
+			pass=false
+		fi
+	}
+
+	# Function to check if a port must be open
+	check_port_nmap_must_be_opened() {
+		ip=$1
+		port=$2
+
+		# Use nmap to check the port status
+		result=$(nmap -p $port $ip | grep "$port" | awk '{print $2}')
+
+		if [ "$result" = "open" ]; then
+			echo "$ip:$port - Port is open: SUCCESS"
+		elif [ "$result" = "closed" ]; then
+			echo "$ip:$port - Port is closed and not firewalled: ERROR"
+			pass=false
+		elif [ "$result" = "filtered" ]; then
+			echo "$ip:$port - Port is filtered (firewalled or blocked): ERROR"
+			pass=false
+		else
+			echo "$ip:$port - Unknown port status: ERROR"
+			pass=false
+		fi
+	}
+
+	# Loop through each IP and check the ports
+	for ipadd in $ips; do
+		echo "Checking ports on $ipadd..."
+
+		# Replace ipadd with 127.0.0.1 if it matches the local IP or hostname
+		if [[ "$ipadd" == "$local_ip" || "$ipadd" == "$hostname" ]]; then
+			ipadd="127.0.0.1"
+		fi
+
+		for port in ${ports//,/ }; do
+			ip_port="$ipadd:$port"
+			if [[ " ${local_ports[@]} " =~ " $ip_port " ]]; then
+				check_port_nmap_must_be_opened $ipadd $port
+			else
+				check_port_nmap_available_to_use $ipadd $port
+			fi
+		done
+	done
+
+	# Final status report
+	if [ "$pass" = true ]; then
+		echo "All nodes passed the port test."
+	else
+		echo "One or more nodes failed the port test. Please investigate."
+	fi
+
+
+}
+
+
+
+
+
 function clear_rollback() {
   unset ERR
   CLEAR_ROLLBACK_MESSAGE="It is recommended that you clear rollback files only when instructed to do so by Mariadb Support.\nType c to clear rollback files.\nType any other key to exit.\n"
@@ -2229,6 +2342,7 @@ Switches:
    --pscs             # Adds the pscs command. pscs lists running columnstore processes 
    --schemasync       # Fix out-of-sync columnstore tables (CAL0009)
    --tmpdir           # Ensure owner of temporary dir after reboot (MCOL-4866 & MCOL-5242)
+   --checkports       # Checks if ports needed by Columnstore are opened
    --clearrollback    # Clear any rollback fragments from dbrm files
    --killcolumnstore  # Stop columnstore processes gracefully, then kill remaining processes
 
@@ -2323,6 +2437,7 @@ for params in "$@"; do
   if [ "$params" == '--schemasync' ]; then SCHEMA_SYNC=true; SKIP_REPORT=true; unset COLLECT_LOGS; VALID=true; fi
   if [ "$params" == '--tmpdir' ]; then FIX_TMP_DIR=true; SKIP_REPORT=true; unset COLLECT_LOGS; VALID=true; fi
   if [ "$params" == '--clearrollback' ]; then CLEARROLLBACK=true; SKIP_REPORT=true; unset COLLECT_LOGS; VALID=true; fi
+  if [ "$params" == '--checkports' ]; then CHECKPORTS=true;VALID=true; fi
   if [ "$params" == '--killcolumnstore' ]; then KILLCS=true; SKIP_REPORT=true; unset COLLECT_LOGS; VALID=true; fi  
   if [ ! $VALID ]; then  INVALID_INPUT=$params; fi
 done
@@ -2479,6 +2594,11 @@ fi
 if [ $CLEARROLLBACK ]; then
   clear_rollback
 fi
+
+if [ $CHECKPORTS ]; then
+	check_ports
+fi
+
 
 if [ $KILLCS ]; then
   kill_columnstore
