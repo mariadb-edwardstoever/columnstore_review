@@ -1007,7 +1007,7 @@ function collect_logs() {
   find columnstore/cpimport -name "*.err" -size +0 -mtime -2 | cpio -pd $LOGSOUTDIR/ 2>/dev/null
 
   #collect ports Status
-  unset SUPRESS_CLOSED_PORTS
+  unset SUPPRESS_CLOSED_PORTS
   check_ports > $LOGSOUTDIR/columnstore/$(hostname)_ports_check.txt 2>/dev/null
 
 
@@ -2115,7 +2115,7 @@ function check_ports(){
 		if [ "$result" = "open" ]; then
 			echo "$ip:$port - Port is open: SUCCESS"
 		elif [ "$result" = "closed" ]; then
-			if [ ! ${SUPRESS_CLOSED_PORTS} ]; then echo "$ip:$port - Port is closed and not firewalled"; fi
+			if [ ! ${SUPPRESS_CLOSED_PORTS} ]; then echo "$ip:$port - Port is closed and not firewalled"; fi
 		elif [ "$result" = "filtered" ]; then
 			echo "$ip:$port - Port is filtered (firewalled or blocked): ERROR"
 			pass=false
@@ -2528,7 +2528,7 @@ report_cs_table_locks
 report_columnstore_query_count
 report_calpontsys_exists
 report_columnstore_tables
-SUPRESS_CLOSED_PORTS=true; check_ports
+SUPPRESS_CLOSED_PORTS=true; check_ports
 TEMP_COLOR=lblue; print_color "===================== LOGS =====================\n"; unset TEMP_COLOR
 report_host_datetime
 report_last_10_error_log_error
