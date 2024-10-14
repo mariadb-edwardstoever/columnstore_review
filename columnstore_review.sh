@@ -2074,7 +2074,7 @@ function ensure_owner_privs_of_tmp_dir() {
 function check_ports(){
 	# Check if nmap is installed
 	if ! command -v nmap &> /dev/null; then
-		echo "Error: nmap is not installed. Please install nmap and try again."
+		printf "nmap is not installed.\n\n"
 		return
 	fi
 
