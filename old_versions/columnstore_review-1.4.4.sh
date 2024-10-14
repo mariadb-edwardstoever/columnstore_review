@@ -1,9 +1,7 @@
 #!/bin/bash
 # columnstore_review.sh
 # script by Edward Stoever for MariaDB support
-# Contributors: Allen Herrera
-#               Patrizio Tamorri
-VERSION=1.4.11
+VERSION=1.4.4
 
 function prepare_for_run() {
   unset ERR
@@ -970,14 +968,12 @@ function collect_logs() {
   dump_log "mcs-loadbrm" $LOGSOUTDIR/columnstore/
   dump_log "mcs-primproc" $LOGSOUTDIR/columnstore/
   dump_log "mcs-workernode@1" $LOGSOUTDIR/columnstore/
-  dump_log "mcs-workernode@2" $LOGSOUTDIR/columnstore/
   dump_log "mcs-writeengineserver" $LOGSOUTDIR/columnstore/
   dump_log "mcs-controllernode" $LOGSOUTDIR/columnstore/
 
   set_data1dir
   ls -lrt $DATA1DIR/systemFiles/dbrm > $LOGSOUTDIR/columnstore/ls_lrt_dbrm.txt
   if [ ! -z "$STORAGE_TYPE" ] && [ "$STORAGE_TYPE" == "S3" ]; then 
-    dump_log "mcs-storagemanager" $LOGSOUTDIR/columnstore/
     smls /data1/systemFiles/dbrm/ >  $LOGSOUTDIR/columnstore/s3_dbrms.txt ;
     smcat /data1/systemFiles/dbrm/BRM_saves_current 2>/dev/null > $LOGSOUTDIR/columnstore/s3_BRM_saves_current ;
   fi
@@ -987,9 +983,7 @@ function collect_logs() {
   if [ -f "/proc/sys/kernel/threads-max" ]; then cp /proc/sys/kernel/threads-max $LOGSOUTDIR/system/kernal-threads-max; fi;
   if [ -f "/proc/sys/kernel/pid_max" ]; then cp /proc/sys/kernel/pid_max $LOGSOUTDIR/system/kernal-pid_max; fi;
   if [ -f "/proc/sys/vm/max_map_count" ]; then cp /proc/sys/vm/max_map_count $LOGSOUTDIR/system/kernal-max_map_count; fi;
-  #   if [ -f "/var/log/messages" ]; then cp /var/log/messages* $LOGSOUTDIR/system; fi;  # TOO MUCH COLLECTED...
-  find /var/log -name "messages*" -mtime -5 -type f -exec cp {} $LOGSOUTDIR/system \; 2>/dev/null
-
+  if [ -f "/var/log/messages" ]; then cp /var/log/messages* $LOGSOUTDIR/system; fi;
   if [ -f "/var/log/syslog" ]; then find /var/log/syslog -name syslog -type f -exec tail -10000 {} > $LOGSOUTDIR/system/syslog \;; fi;
   if [ -f "/var/log/daemon.log" ]; then find /var/log/daemon.log -name daemon.log -type f -exec tail -10000 {} > $LOGSOUTDIR/system/daemon.log \;; fi;
   if command -v ulimit >/dev/null 2>&1; then
@@ -1003,12 +997,7 @@ function collect_logs() {
   ls -1 columnstore/*.log 2>/dev/null | cpio -pd $LOGSOUTDIR/ 2>/dev/null
   ls -1 columnstore/*z 2>/dev/null | cpio -pd $LOGSOUTDIR/ 2>/dev/null
   find columnstore/archive columnstore/install columnstore/trace -mtime -30 | cpio -pd $LOGSOUTDIR/ 2>/dev/null 
-  #  find columnstore/cpimport -mtime -1 | cpio -pd $LOGSOUTDIR/ 2>/dev/null   # COLLECTS TOO MUCH
-  find columnstore/cpimport -name "*.err" -size +0 -mtime -2 | cpio -pd $LOGSOUTDIR/ 2>/dev/null
-
-  #collect ports Status
-  check_ports > $LOGSOUTDIR/mariadb/$(hostname)_ports_check.txt 2>/dev/null
-
+  find columnstore/cpimport -mtime -1 | cpio -pd $LOGSOUTDIR/ 2>/dev/null
 
   if [ $CAN_CONNECT ]; then
     mariadb -ABNe "show global variables" > $LOGSOUTDIR/mariadb/$(hostname)_global_variables.txt 2>/dev/null
@@ -2069,250 +2058,6 @@ function ensure_owner_privs_of_tmp_dir() {
   
 }
 
-# CHECK PORTS FUNCTIONS BY Patrizio Tamorri
-function check_ports(){
-	# Check if nmap is installed
-	if ! command -v nmap &> /dev/null; then
-		echo "Error: nmap is not installed. Please install nmap and try again."
-		return
-	fi
-
-	# Define the ports to check
-	ports="8600,8601,8602,8603,8604,8605,8606,8607,8608,8609,8610,8611,8612,8613,8614,8615,8616,8617,8618,8619,8620,8630,8700,8800,3306,8999"
-
-	# Get the local node from the file
-	my_node=$(cat /var/lib/columnstore/local/module)
-
-	# Get the hostname and local IP address of the machine
-	hostname=$(hostname)
-	local_ip=$(hostname -I | awk '{print $1}')
-
-	# Extract IPs from Columnstore.xml, handling special characters like \r, \n, and \t
-	ips=$(grep -A 1 "_WriteEngineServer" /etc/columnstore/Columnstore.xml \
-	| sed "/${my_node}_WriteEngineServer/,+0d" \
-	| grep "<IPAddr>" \
-	| tr -d '\r\n\t' \
-	| sed -e 's/<IPAddr>//g' -e 's/<\/IPAddr>//g' -e 's/^[ \t]*//' -e 's/[ \t]*$//' \
-	| sort -u)
-
-	# Extract IPAddr:Port pairs from the XML file, removing \r, \n, and \t
-	local_ports=$(grep -E "<IPAddr>|<Port>" /etc/columnstore/Columnstore.xml \
-	| tr -d '\r\n\t' \
-	| sed -e 's/<\/\?IPAddr>//g' -e 's/<\/\?Port>//g' \
-	| awk 'NR%2{printf "%s:", $0; next;} 1')
-
-	pass=true
-
-	# Function to check if a port is available to use
-	check_port_nmap_available_to_use() {
-		ip=$1
-		port=$2
-
-		# Use nmap to check the port status
-		result=$(nmap -p $port $ip | grep "$port" | awk '{print $2}')
-
-		if [ "$result" = "open" ]; then
-			echo "$ip:$port - Port is open: SUCCESS"
-		elif [ "$result" = "closed" ]; then
-			echo "$ip:$port - Port is closed and not firewalled"
-		elif [ "$result" = "filtered" ]; then
-			echo "$ip:$port - Port is filtered (firewalled or blocked): ERROR"
-			pass=false
-		else
-			echo "$ip:$port - Unknown port status: ERROR"
-			pass=false
-		fi
-	}
-
-	# Function to check if a port must be open
-	check_port_nmap_must_be_opened() {
-		ip=$1
-		port=$2
-
-		# Use nmap to check the port status
-		result=$(nmap -p $port $ip | grep "$port" | awk '{print $2}')
-
-		if [ "$result" = "open" ]; then
-			echo "$ip:$port - Port is open: SUCCESS"
-		elif [ "$result" = "closed" ]; then
-			echo "$ip:$port - Port is closed and not firewalled: ERROR"
-			pass=false
-		elif [ "$result" = "filtered" ]; then
-			echo "$ip:$port - Port is filtered (firewalled or blocked): ERROR"
-			pass=false
-		else
-			echo "$ip:$port - Unknown port status: ERROR"
-			pass=false
-		fi
-	}
-
-	# Loop through each IP and check the ports
-	for ipadd in $ips; do
-		echo "Checking ports on $ipadd..."
-
-		# Replace ipadd with 127.0.0.1 if it matches the local IP or hostname
-		if [[ "$ipadd" == "$local_ip" || "$ipadd" == "$hostname" ]]; then
-			ipadd="127.0.0.1"
-		fi
-
-		for port in ${ports//,/ }; do
-			ip_port="$ipadd:$port"
-			if [[ " ${local_ports[@]} " =~ " $ip_port " ]]; then
-				check_port_nmap_must_be_opened $ipadd $port
-			else
-				check_port_nmap_available_to_use $ipadd $port
-			fi
-		done
-	done
-
-	# Final status report
-	if [ "$pass" = true ]; then
-		echo "All nodes passed the port test."
-	else
-		echo "One or more nodes failed the port test. Please investigate."
-	fi
-
-
-}
-
-function clear_rollback() {
-  unset ERR
-  CLEAR_ROLLBACK_MESSAGE="It is recommended that you clear rollback files only when instructed to do so by Mariadb Support.\nType c to clear rollback files.\nType any other key to exit.\n"
-  STORAGE_TYPE=$(grep service /etc/columnstore/storagemanager.cnf | grep -v "^\#" | grep "\=" | awk -F= '{print $2}' | awk '{print tolower($0)}' | xargs)
-  DATA1DIR=$(mcsGetConfig SystemConfig DBRoot1 2>/dev/null) || DATA1DIR=/var/lib/columnstore/data1
-  BRMSAV=$(cat $DATA1DIR/systemFiles/dbrm/BRM_saves_current | xargs)
-if [[ ! "$(ps -ef | grep -E "(PrimProc|ExeMgr|DMLProc|DDLProc|WriteEngineServer|StorageManager|controllernode|workernode)" | grep -v "grep"|wc -l)" == "0" ]]; then
-  TEMP_COLOR=lred; print_color "Columnstore processes are running.\nYou may clear rollback fragments only when Columnstore processes are stopped."; unset TEMP_COLOR
-  print0 "\nExiting.\n\n";  exit 0
-fi
-
-if [ "$STORAGE_TYPE" == "localstorage" ]; then 
-  COUNTFILES=$(find $DATA1DIR/systemFiles \( -name "${BRMSAV}_vss" -o -name "${BRMSAV}_vbbm" \) -size +0 | wc -l)
-  if [ "$COUNTFILES" == "0" ]; then
-    TEMP_COLOR=lred; print_color "Rollback files are empty."; unset TEMP_COLOR
-    print0 "\nExiting.\n\n";  exit 0
-  fi
-  
-  print0 "$CLEAR_ROLLBACK_MESSAGE"
-
-  read -s -n 1 RESPONSE
-  if [ "$RESPONSE" == "c" ]; then
-    ech0; ech0
-    BRM_SAVES_BACKUP_FILE=$(hostname)_$(date +"%Y-%m-%d-%H-%M-%S")_BRM_saves.tar
-    cd $DATA1DIR/systemFiles/dbrm/
-    print0 "BRM_saves_current: ${BRMSAV}\n\nBacking up these files:\n"
-    find . \( -name "${BRMSAV}_vss" -o -name "${BRMSAV}_vbbm" \) -exec tar -rvf /tmp/$BRM_SAVES_BACKUP_FILE {} \;
-    ech0
-    find . \( -name "${BRMSAV}_vss" -o -name "${BRMSAV}_vbbm" \) -size +0 -exec truncate -s0 {} \; || ERR=true
-    COUNTFILES=$(find $DATA1DIR/systemFiles \( -name "${BRMSAV}_vss" -o -name "${BRMSAV}_vbbm" \) -size +0 | wc -l)
-    if [ $ERR ] || [ "$COUNTFILES" != "0" ]; then
-      ech0 "Something went wrong. Check the size of files ${BRMSAV}_vss and ${BRMSAV}_vbbm. Each file should be zero bytes in size."
-      ls -lrt $DATA1DIR/systemFiles/dbrm
-    else
-      TEMP_COLOR=lcyan; print_color  "BRM_saves files backed up to /tmp/$BRM_SAVES_BACKUP_FILE.\nFiles cleared successfully.\n\n"; unset TEMP_COLOR
-    fi
-  else
-    print0 "\nNothing done.\n\n"
-  fi
-  
-fi
-
-if [ "$STORAGE_TYPE" == "s3" ]; then 
-  DBRM_TMP_DIR=/tmp/dbrm-before-clearing-$(date +"%Y-%m-%d-%H-%M-%S") || ERR=true
-  print0 "$CLEAR_ROLLBACK_MESSAGE"
-  read -s -n 1 RESPONSE
-  if [ "$RESPONSE" == "c" ]; then
-    ## REF: https://mariadbcorp.atlassian.net/wiki/spaces/Support/pages/1600094249/Stuck+load_brm+failed+rollback+of+a+transaction
-    cd /var/lib/columnstore/storagemanager/metadata/data1/systemFiles/dbrm/ || ERR=true
-    mkdir -p $DBRM_TMP_DIR || ERR=true
-    find . | cpio -pd $DBRM_TMP_DIR || ERR=true
-    # Clear vss and vbbm files
-    rm -f BRM_saves_vss.meta BRM_saves_vbbm.meta || ERR=true
-    touch BRM_saves_vss.meta || ERR=true;  chown mysql:mysql BRM_saves_vss.meta || ERR=true
-    touch BRM_saves_vbbm.meta || ERR=true; chown mysql:mysql BRM_saves_vbbm.meta || ERR=true
-    rm -rf /var/lib/columnstore/storagemanager/cache/data1/* || ERR=true
-    mkdir /var/lib/columnstore/storagemanager/cache/data1/downloading || ERR=true
-    chown mysql:mysql -R /var/lib/columnstore/storagemanager/cache || ERR=true
-    
-      if [ $ERR ]; then
-        ech0 "Something went wrong."
-      else
-        TEMP_COLOR=lcyan; print_color "BRM_saves files backed up to $DBRM_TMP_DIR.\nFiles cleared successfully.\n\n"; unset TEMP_COLOR
-      fi
-    
-  else
-    print0 "\nNothing done.\n\n"
-  fi
-fi
-}
-
-function kill_columnstore(){
-COUNT_ANY_STRAGGLERS=$(ps -ef | grep -E '(PrimProc|ExeMgr|DMLProc|DDLProc|WriteEngineServer|StorageManager|controllernode|workernode|load_brm)' | grep -v "grep" | wc -l)
-PM1=$(mcsGetConfig pm1_WriteEngineServer IPAddr)
-PM2=$(mcsGetConfig pm2_WriteEngineServer IPAddr)
-if [ ! "$PM1" == "127.0.0.1" ] && [ ! -z $PM2 ]; then
-  THISISCLUSTER=true
-fi
-
-if [ "$COUNT_ANY_STRAGGLERS" == "0" ]; then
-  TEMP_COLOR=lred; print_color "Columnstore processes are not running.\n"; unset TEMP_COLOR
-  clearShm
-  TEMP_COLOR=lcyan; print_color "Columnstore shared memory cleared.\n";  unset TEMP_COLOR
-  print0 "\nExiting.\n\n";  exit 0
-fi
-
-if [ $THISISCLUSTER ] && [ "$COUNT_ANY_STRAGGLERS" != "0" ]; then 
-  TEMP_COLOR=lred; print_color "WARNING: This is a columnstore cluster and it is best to use cmapi commands to stop columnstore processes.\n"; unset TEMP_COLOR
-fi
-
-
-TEMP_COLOR=lcyan; print_color "Press c to stop all columnstore processes on this node.\n"; unset TEMP_COLOR
-
-read -s -n 1 RESPONSE
-  if [ "$RESPONSE" == "c" ]; then
-  if [ "$COUNT_ANY_STRAGGLERS" != "0" ]; then
-    ech0 "Attempting to gracefully stop mcs-ddlproc."
-    systemctl stop mcs-ddlproc;
-    ech0 "Attempting to gracefully stop mcs-dmlproc."
-    systemctl stop mcs-dmlproc;
-    systemctl stop mcs-exemgr 2>/dev/null; # if cs 6.4 and prior
-    ech0 "Attempting to gracefully stop mcs-controllernode."
-    systemctl stop mcs-controllernode;  
-    ech0 "Attempting to gracefully stop mcs-storagemanager."
-    systemctl stop mcs-storagemanager;
-    ech0 "Attempting to gracefully stop mcs-primproc."
-    systemctl stop mcs-primproc;
-    ech0 "Attempting to gracefully stop mcs-writeengineserver."
-    systemctl stop mcs-writeengineserver;
-    ech0 "Attempting to gracefully stop mcs-workernode@1."
-    systemctl stop mcs-workernode@1;
-    ech0 "Attempting to gracefully stop mcs-workernode@2."
-    systemctl stop mcs-workernode@2;
-  fi
-
-  COUNT_ANY_STRAGGLERS=$(ps -ef | grep -E '(PrimProc|ExeMgr|DMLProc|DDLProc|WriteEngineServer|StorageManager|controllernode|workernode|load_brm)' | grep -v "grep" | wc -l)
-  if [ "$COUNT_ANY_STRAGGLERS" != "0" ]; then 
-    ech0 "Remaining processes:"
-    ps -ef | grep -E '(PrimProc|ExeMgr|DMLProc|DDLProc|WriteEngineServer|StorageManager|controllernode|workernode|load_brm)' | grep -v "grep"
-    ech0 "Killing them..."
-    ps -ef | grep -E '(PrimProc|ExeMgr|DMLProc|DDLProc|WriteEngineServer|StorageManager|controllernode|workernode|load_brm)' | grep -v "grep" | awk '{print $2}' | xargs kill -9
-  fi
-
-  COUNT_ANY_STRAGGLERS=$(ps -ef | grep -E '(PrimProc|ExeMgr|DMLProc|DDLProc|WriteEngineServer|StorageManager|controllernode|workernode|load_brm)' | grep -v "grep" | wc -l)
-  
-  if [ "$COUNT_ANY_STRAGGLERS" == "0" ]; then
-    ech0 "No columnstore processes running."
-    clearShm
-    TEMP_COLOR=lcyan; print_color "Columnstore shared memory cleared.\n";  unset TEMP_COLOR
-  else
-    ech0 "After two attempts to kill all Columnstore processes, this is still running:"
-    ps -ef | grep -E '(PrimProc|ExeMgr|DMLProc|DDLProc|WriteEngineServer|StorageManager|controllernode|workernode|load_brm)' | grep -v "grep"
-  fi
-else
-  print0 "\nNothing done.\n\n"
-fi
-}
-
 function display_outputfile_message() {
   echo "The output of this script is saved in the file $OUTPUTFILE"; echo;
 }
@@ -2325,29 +2070,26 @@ function display_help_message() {
 If database is up, this script will connect as root@localhost via socket.
 
 Switches:
-   --help             # display this message
-   --version          # only show the header with version information
-   --logs             # create a compressed archive of logs for MariaDB Support Ticket
-   --backupdbrm       # takes a compressed backup of extent map files in dbrm directory
-   --testschema       # creates a test schema, tables, imports, queries, drops schema
-   --testschemakeep   # creates a test schema, tables, imports, queries, does not drop
-   --ldlischema       # using ldli, creates test schema, tables, imports, queries, drops schema
-   --ldlischemakeep   # using ldli, creates test schema, tables, imports, queries, does not drop
-   --emptydirs        # searches $COLUMNSTOREDIR for empty directories
-   --notmysqldirs     # searches $COLUMNSTOREDIR for directories not owned by mysql
-   --emcheck          # Checks the extent map for orphaned and missing files
-   --s3check          # Checks the extent map against S3 storage
-   --pscs             # Adds the pscs command. pscs lists running columnstore processes 
-   --schemasync       # Fix out-of-sync columnstore tables (CAL0009)
-   --tmpdir           # Ensure owner of temporary dir after reboot (MCOL-4866 & MCOL-5242)
-   --checkports       # Checks if ports needed by Columnstore are opened
-   --clearrollback    # Clear any rollback fragments from dbrm files
-   --killcolumnstore  # Stop columnstore processes gracefully, then kill remaining processes
+   --help            # display this message
+   --version         # only show the header with version information
+   --logs            # create a compressed archive of logs for MariaDB Support Ticket
+   --backupdbrm      # takes a compressed backup of extent map files in dbrm directory
+   --testschema      # creates a test schema, tables, imports, queries, drops schema
+   --testschemakeep  # creates a test schema, tables, imports, queries, does not drop
+   --ldlischema      # using ldli, creates test schema, tables, imports, queries, drops schema
+   --ldlischemakeep  # using ldli, creates test schema, tables, imports, queries, does not drop
+   --emptydirs       # searches $COLUMNSTOREDIR for empty directories
+   --notmysqldirs    # searches $COLUMNSTOREDIR for directories not owned by mysql
+   --emcheck         # Checks the extent map for orphaned and missing files
+   --s3check         # Checks the extent map against S3 storage
+   --pscs            # Adds the pscs command. pscs lists running columnstore processes 
+   --schemasync      # Fix out-of-sync columnstore tables (CAL0009)
+   --tmpdir          # Ensure owner of temporary dir after reboot (MCOL-4866 & MCOL-5242)
 
 Color output switches:
-   --color=none       # print headers without color
-   --color=red        # print headers in color
-                      # Options: [none,red,blue,green,yellow,magenta,cyan] prefix color with "l" for light\n"
+   --color=none      # print headers without color
+   --color=red       # print headers in color
+                     # Options: [none,red,blue,green,yellow,magenta,cyan] prefix color with "l" for light\n"
   ech0
 }
 
@@ -2434,9 +2176,6 @@ for params in "$@"; do
   if [ "$params" == '--pscs' ]; then PSCS_ALIAS=true; SKIP_REPORT=true; unset COLLECT_LOGS; VALID=true; fi
   if [ "$params" == '--schemasync' ]; then SCHEMA_SYNC=true; SKIP_REPORT=true; unset COLLECT_LOGS; VALID=true; fi
   if [ "$params" == '--tmpdir' ]; then FIX_TMP_DIR=true; SKIP_REPORT=true; unset COLLECT_LOGS; VALID=true; fi
-  if [ "$params" == '--clearrollback' ]; then CLEARROLLBACK=true; SKIP_REPORT=true; unset COLLECT_LOGS; VALID=true; fi
-  if [ "$params" == '--checkports' ]; then SKIP_REPORT=true; CHECKPORTS=true;VALID=true; fi
-  if [ "$params" == '--killcolumnstore' ]; then KILLCS=true; SKIP_REPORT=true; unset COLLECT_LOGS; VALID=true; fi  
   if [ ! $VALID ]; then  INVALID_INPUT=$params; fi
 done
 
@@ -2589,15 +2328,3 @@ if [ $FIX_TMP_DIR ]; then
   ensure_owner_privs_of_tmp_dir
 fi
 
-if [ $CLEARROLLBACK ]; then
-  clear_rollback
-fi
-
-if [ $CHECKPORTS ]; then
-	check_ports
-fi
-
-
-if [ $KILLCS ]; then
-  kill_columnstore
-fi
