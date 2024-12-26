@@ -3,15 +3,24 @@
 # script by Edward Stoever for MariaDB support
 # Contributors: Allen Herrera
 #               Patrizio Tamorri
-VERSION=1.4.11
+VERSION=1.4.12
 
 function prepare_for_run() {
   unset ERR
-  OUTDIR=/tmp/columnstore_review
+  if [ -n "$USER_PROVIDED_OUTPUT_PATH" ] && [ ! -d "$USER_PROVIDED_OUTPUT_PATH" ]; then 
+    printf "The directory $USER_PROVIDED_OUTPUT_PATH does not exist.\n\n"
+    exit 1
+  fi
+
+  if [ -n "$USER_PROVIDED_OUTPUT_PATH" ]; then
+    OUTDIR=$USER_PROVIDED_OUTPUT_PATH/columnstore_review
+  else
+    OUTDIR=/tmp/columnstore_review
+  fi
   mkdir -p $OUTDIR
   WARNFILE=$OUTDIR/cs_warnings.out
   if [ $EM_CHECK ]; then
-    EMOUTDIR=/tmp/columnstore_review/em; mkdir -p $EMOUTDIR
+    EMOUTDIR=$OUTDIR/em; mkdir -p $EMOUTDIR
     OUTPUTFILE=$EMOUTDIR/$(hostname)_cs_em_check.txt
   else
     OUTPUTFILE=$OUTDIR/$(hostname)_cs_review.txt
@@ -944,7 +953,15 @@ function dump_log () {
 }
 
 function collect_logs() {
-  LOGSOUTDIR=/tmp/columnstore_review/logs_$(date +"%m-%d-%H-%M-%S")/$(hostname)
+
+  if [ -n "$USER_PROVIDED_OUTPUT_PATH" ]; then
+    TARPATH="$USER_PROVIDED_OUTPUT_PATH"
+    LOGSOUTDIR="$USER_PROVIDED_OUTPUT_PATH/columnstore_review/logs_$(date +"%m-%d-%H-%M-%S")/$(hostname)"
+  else
+    TARPATH=/tmp
+    LOGSOUTDIR=/tmp/columnstore_review/logs_$(date +"%m-%d-%H-%M-%S")/$(hostname)
+  fi
+
   mkdir -p $LOGSOUTDIR || ech0 'Cannot create temporary directory for logs.';
   mkdir -p $LOGSOUTDIR/system
   mkdir -p $LOGSOUTDIR/mariadb
@@ -1018,18 +1035,18 @@ function collect_logs() {
   my_print_defaults --mysqld > $LOGSOUTDIR/mariadb/$(hostname)_my_print_defaults.txt 2>/dev/null 
   if [ -f $OUTPUTFILE ]; then cp $OUTPUTFILE $LOGSOUTDIR/; fi
   cd $LOGSOUTDIR/..
-  tar -czf /tmp/$COMPRESSFILE ./*
+  tar -czf $TARPATH/$COMPRESSFILE ./*
   cd - 1>/dev/null 
   print_color "### COLLECTED LOGS FOR SUPPORT TICKET ###\n"
   ech0 "Attach the following tar file to your support ticket."
   if [ $THISISCLUSTER ]; then
     ech0 "Please collect logs with this script from each node in your cluster."
   fi
-  FILE_SIZE=$(stat -c %s /tmp/$COMPRESSFILE)
+  FILE_SIZE=$(stat -c %s $TARPATH/$COMPRESSFILE)
   if (( $FILE_SIZE > 52428800 )); then
-    print0 "The file /tmp/$COMPRESSFILE is larger than 50MB.\nPlease use MariaDB Large file upload at https://mariadb.com/upload/\nInform us about the upload in the support ticket.\n"
+    print0 "The file $TARPATH/$COMPRESSFILE is larger than 50MB.\nPlease use MariaDB Large file upload at https://mariadb.com/upload/\nInform us about the upload in the support ticket.\n"
   fi 
-  print0 "\nCreated: /tmp/$COMPRESSFILE\n"
+  print0 "\nCreated: $TARPATH/$COMPRESSFILE\n"
   ech0
 }
 
@@ -1215,6 +1232,12 @@ fi
 }
 
 function backup_dbrm() {
+if [ -n "$USER_PROVIDED_OUTPUT_PATH" ]; then
+  TARPATH="$USER_PROVIDED_OUTPUT_PATH"
+else
+  TARPATH=/tmp
+fi
+
   STORAGE_TYPE=$(grep service /etc/columnstore/storagemanager.cnf | grep -v "^\#" | grep "\=" | awk -F= '{print $2}' | xargs)
   if [ "$(echo $STORAGE_TYPE | awk '{print tolower($0)}')" == "s3" ]; then print0 "This is node uses S3 storage for Columnstore. Exiting.\n\n"; return; fi
 
@@ -1240,10 +1263,10 @@ fi
   fi
   set_data1dir
   cd $DATA1DIR/systemFiles
-  tar -czf /tmp/$COMPRESSFILE ./dbrm
+  tar -czf $TARPATH/$COMPRESSFILE ./dbrm
   cd - 1>/dev/null
   print_color "### DBRM EXTENT MAP BACKUP ###\n"
-  ech0 "Files in dbrm directory backed up to compressed archive /tmp/$COMPRESSFILE."
+  ech0 "Files in dbrm directory backed up to compressed archive $TARPATH/$COMPRESSFILE"
   ech0 "Files in /tmp can be deleted on reboot. It is recommended to move the archive to a safe location."
   ech0
 }
@@ -2329,6 +2352,7 @@ Switches:
    --help             # display this message
    --version          # only show the header with version information
    --logs             # create a compressed archive of logs for MariaDB Support Ticket
+   --path             # define the path for where to save files/tarballs and outputs of this script
    --backupdbrm       # takes a compressed backup of extent map files in dbrm directory
    --testschema       # creates a test schema, tables, imports, queries, drops schema
    --testschemakeep   # creates a test schema, tables, imports, queries, does not drop
@@ -2423,6 +2447,7 @@ for params in "$@"; do
   if [ "$params" == '--help' ]; then HELP=true; VALID=true; fi
   if [ "$params" == '--version' ]; then if [ ! $SKIP_REPORT ]; then DISPLAY_VERSION=true; fi; VALID=true; fi
   if [ "$params" == '--logs' ];    then if [ ! $SKIP_REPORT ]; then COLLECT_LOGS=true;    fi; VALID=true; fi
+  if [[ "$params" == "--path"* ]];    then USER_PROVIDED_OUTPUT_PATH=$(echo "$params" | awk -F= '{print $2}'); VALID=true; fi
   if [ "$params" == '--backupdbrm' ]; then BACKUP_DBRM=true; SKIP_REPORT=true; unset COLLECT_LOGS; VALID=true; fi
   if [ "$params" == '--testschema' ]; then TEST_SCHEMA=true; SKIP_REPORT=true; unset COLLECT_LOGS; VALID=true; fi
   if [ "$params" == '--testschemakeep' ]; then TEST_SCHEMA_KEEP=true; SKIP_REPORT=true; unset COLLECT_LOGS; VALID=true; fi
@@ -2444,7 +2469,7 @@ done
 prepare_for_run
 exists_client_able_to_connect_with_socket
 if [ $DISPLAY_VERSION ]; then exit 0; fi
-if [ $INVALID_INPUT ]; then TEMP_COLOR=lred; print_color "Invalid parameter: ";ech0 $INVALID_INPUT; ech0; unset TEMP_COLOR; fi
+if [ $INVALID_INPUT ]; then TEMP_COLOR=lred; print_color "Invalid parameter: ";ech0 $INVALID_INPUT; ech0; unset TEMP_COLOR; exit 1; fi
 if [ $HELP ]||[ $INVALID_INPUT ]; then
   display_help_message
   exit 0
