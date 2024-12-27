@@ -3,7 +3,7 @@
 # script by Edward Stoever for MariaDB support
 # Contributors: Allen Herrera
 #               Patrizio Tamorri
-VERSION=1.4.12
+VERSION=1.4.13
 
 function prepare_for_run() {
   unset ERR
@@ -14,8 +14,10 @@ function prepare_for_run() {
 
   if [ -n "$USER_PROVIDED_OUTPUT_PATH" ]; then
     OUTDIR=$USER_PROVIDED_OUTPUT_PATH/columnstore_review
+    TARDIR=$USER_PROVIDED_OUTPUT_PATH
   else
     OUTDIR=/tmp/columnstore_review
+    TARDIR=/tmp
   fi
   mkdir -p $OUTDIR
   WARNFILE=$OUTDIR/cs_warnings.out
@@ -55,6 +57,7 @@ function exists_mariadbd_running() {
 }
 
 function exists_columnstore_running() {
+
   if [[ "$(ps -ef | grep -E "(PrimProc|ExeMgr|DMLProc|DDLProc|WriteEngineServer|StorageManager|controllernode|workernode)" | grep -v "grep"|wc -l)" == "0" ]]; then 
     echo 'There are no Mariadb-Columnstore processes running.' >> $WARNFILE; 
   else
@@ -2366,6 +2369,7 @@ Switches:
    --schemasync       # Fix out-of-sync columnstore tables (CAL0009)
    --tmpdir           # Ensure owner of temporary dir after reboot (MCOL-4866 & MCOL-5242)
    --checkports       # Checks if ports needed by Columnstore are opened
+   --eustack          # Dumps the stack of Columnstore processes
    --clearrollback    # Clear any rollback fragments from dbrm files
    --killcolumnstore  # Stop columnstore processes gracefully, then kill remaining processes
 
@@ -2427,6 +2431,53 @@ fi
   printf "$1" >> $OUTPUTFILE
 }
 
+function get_eu_stack() {
+  if ! command -v eu-stack &> /dev/null; then
+    printf "\n[!] eu-stack not found. Please install eu-stack\n\n"
+    ech0 "example: "
+    ech0 "  yum install elfutils -y"
+    ech0 "  apt-get install elfutils"
+    ech0 
+    exit 1; 
+  fi  
+  
+  # Confirm CS online
+  if [[ "$(ps -ef | grep -E "(PrimProc|ExeMgr|DMLProc|DDLProc|WriteEngineServer|StorageManager|controllernode|workernode)" | grep -v "grep"|wc -l)" == "0" ]]; then 
+    printf "Columnstore processes are not running. EU Stack will not be collected.\n\n"
+    exit 1;
+  fi
+
+  eu=$(which eu-stack)
+  EU_FOLDER="$(hostname)_$(date +"%Y-%m-%d-%H-%M-%S")_eu_stack"
+  if [ ! -d "$OUTDIR/$EU_FOLDER" ]; then mkdir -p "$OUTDIR/$EU_FOLDER"; fi
+
+  $eu -p $(pidof PrimProc) > "$OUTDIR/$EU_FOLDER/eu-PrimProc.txt" ;
+  $eu -p $(pidof DMLProc) > "$OUTDIR/$EU_FOLDER/eu-DMLProc.txt" ;
+  $eu -p $(pidof DDLProc) > "$OUTDIR/$EU_FOLDER/eu-DDLProc.txt" ;
+  $eu -p $(pidof mariadbd) > "$OUTDIR/$EU_FOLDER/eu-mariadbd.txt" ;
+  $eu -p $(pidof WriteEngineServer) > "$OUTDIR/$EU_FOLDER/eu-WriteEngineServer.txt" ;
+  $eu -p $(pidof controllernode) > "$OUTDIR/$EU_FOLDER/eu-controllernode.txt" ;
+  $eu -p $(pidof workernode) > "$OUTDIR/$EU_FOLDER/eu-workernode.txt" ;
+  cd $OUTDIR
+  tar -czf "$OUTDIR/$EU_FOLDER.tar.gz" $EU_FOLDER/*
+
+  if [ -f "$OUTDIR/$EU_FOLDER.tar.gz" ]; then
+    print_color "### EU STACK COMPLETE ###\n"
+  else
+    print0 "EU Stack files not found.\n"
+    exit 1;
+  fi
+
+  # cleanup
+  mv "$OUTDIR/$EU_FOLDER.tar.gz" $TARDIR
+  if [ -f "$TARDIR/$EU_FOLDER.tar.gz" ]; then
+    print0 "Created: $TARDIR/$EU_FOLDER.tar.gz \n\n"
+  else
+    print0 "EU Stack files not found.\n"
+    exit 1;
+  fi
+}
+
 COLOR=default
 for params in "$@"; do
   unset VALID;
@@ -2463,6 +2514,7 @@ for params in "$@"; do
   if [ "$params" == '--clearrollback' ]; then CLEARROLLBACK=true; SKIP_REPORT=true; unset COLLECT_LOGS; VALID=true; fi
   if [ "$params" == '--checkports' ]; then SKIP_REPORT=true; CHECKPORTS=true;VALID=true; fi
   if [ "$params" == '--killcolumnstore' ]; then KILLCS=true; SKIP_REPORT=true; unset COLLECT_LOGS; VALID=true; fi  
+  if [ "$params" == '--eustack' ]; then SKIP_REPORT=true; COLLECT_EU_STACK=true;VALID=true; fi
   if [ ! $VALID ]; then  INVALID_INPUT=$params; fi
 done
 
@@ -2624,7 +2676,10 @@ if [ $CHECKPORTS ]; then
 	check_ports
 fi
 
-
 if [ $KILLCS ]; then
   kill_columnstore
+fi
+
+if [ $COLLECT_EU_STACK ]; then
+  get_eu_stack
 fi
