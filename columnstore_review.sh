@@ -3,15 +3,26 @@
 # script by Edward Stoever for MariaDB support
 # Contributors: Allen Herrera
 #               Patrizio Tamorri
-VERSION=1.4.11
+VERSION=1.4.13
 
 function prepare_for_run() {
   unset ERR
-  OUTDIR=/tmp/columnstore_review
+  if [ -n "$USER_PROVIDED_OUTPUT_PATH" ] && [ ! -d "$USER_PROVIDED_OUTPUT_PATH" ]; then 
+    printf "The directory $USER_PROVIDED_OUTPUT_PATH does not exist.\n\n"
+    exit 1
+  fi
+
+  if [ -n "$USER_PROVIDED_OUTPUT_PATH" ]; then
+    OUTDIR=$USER_PROVIDED_OUTPUT_PATH/columnstore_review
+    TARDIR=$USER_PROVIDED_OUTPUT_PATH
+  else
+    OUTDIR=/tmp/columnstore_review
+    TARDIR=/tmp
+  fi
   mkdir -p $OUTDIR
   WARNFILE=$OUTDIR/cs_warnings.out
   if [ $EM_CHECK ]; then
-    EMOUTDIR=/tmp/columnstore_review/em; mkdir -p $EMOUTDIR
+    EMOUTDIR=$OUTDIR/em; mkdir -p $EMOUTDIR
     OUTPUTFILE=$EMOUTDIR/$(hostname)_cs_em_check.txt
   else
     OUTPUTFILE=$OUTDIR/$(hostname)_cs_review.txt
@@ -46,6 +57,7 @@ function exists_mariadbd_running() {
 }
 
 function exists_columnstore_running() {
+
   if [[ "$(ps -ef | grep -E "(PrimProc|ExeMgr|DMLProc|DDLProc|WriteEngineServer|StorageManager|controllernode|workernode)" | grep -v "grep"|wc -l)" == "0" ]]; then 
     echo 'There are no Mariadb-Columnstore processes running.' >> $WARNFILE; 
   else
@@ -944,7 +956,15 @@ function dump_log () {
 }
 
 function collect_logs() {
-  LOGSOUTDIR=/tmp/columnstore_review/logs_$(date +"%m-%d-%H-%M-%S")/$(hostname)
+
+  if [ -n "$USER_PROVIDED_OUTPUT_PATH" ]; then
+    TARPATH="$USER_PROVIDED_OUTPUT_PATH"
+    LOGSOUTDIR="$USER_PROVIDED_OUTPUT_PATH/columnstore_review/logs_$(date +"%m-%d-%H-%M-%S")/$(hostname)"
+  else
+    TARPATH=/tmp
+    LOGSOUTDIR=/tmp/columnstore_review/logs_$(date +"%m-%d-%H-%M-%S")/$(hostname)
+  fi
+
   mkdir -p $LOGSOUTDIR || ech0 'Cannot create temporary directory for logs.';
   mkdir -p $LOGSOUTDIR/system
   mkdir -p $LOGSOUTDIR/mariadb
@@ -1018,18 +1038,18 @@ function collect_logs() {
   my_print_defaults --mysqld > $LOGSOUTDIR/mariadb/$(hostname)_my_print_defaults.txt 2>/dev/null 
   if [ -f $OUTPUTFILE ]; then cp $OUTPUTFILE $LOGSOUTDIR/; fi
   cd $LOGSOUTDIR/..
-  tar -czf /tmp/$COMPRESSFILE ./*
+  tar -czf $TARPATH/$COMPRESSFILE ./*
   cd - 1>/dev/null 
   print_color "### COLLECTED LOGS FOR SUPPORT TICKET ###\n"
   ech0 "Attach the following tar file to your support ticket."
   if [ $THISISCLUSTER ]; then
     ech0 "Please collect logs with this script from each node in your cluster."
   fi
-  FILE_SIZE=$(stat -c %s /tmp/$COMPRESSFILE)
+  FILE_SIZE=$(stat -c %s $TARPATH/$COMPRESSFILE)
   if (( $FILE_SIZE > 52428800 )); then
-    print0 "The file /tmp/$COMPRESSFILE is larger than 50MB.\nPlease use MariaDB Large file upload at https://mariadb.com/upload/\nInform us about the upload in the support ticket.\n"
+    print0 "The file $TARPATH/$COMPRESSFILE is larger than 50MB.\nPlease use MariaDB Large file upload at https://mariadb.com/upload/\nInform us about the upload in the support ticket.\n"
   fi 
-  print0 "\nCreated: /tmp/$COMPRESSFILE\n"
+  print0 "\nCreated: $TARPATH/$COMPRESSFILE\n"
   ech0
 }
 
@@ -1215,6 +1235,12 @@ fi
 }
 
 function backup_dbrm() {
+if [ -n "$USER_PROVIDED_OUTPUT_PATH" ]; then
+  TARPATH="$USER_PROVIDED_OUTPUT_PATH"
+else
+  TARPATH=/tmp
+fi
+
   STORAGE_TYPE=$(grep service /etc/columnstore/storagemanager.cnf | grep -v "^\#" | grep "\=" | awk -F= '{print $2}' | xargs)
   if [ "$(echo $STORAGE_TYPE | awk '{print tolower($0)}')" == "s3" ]; then print0 "This is node uses S3 storage for Columnstore. Exiting.\n\n"; return; fi
 
@@ -1240,10 +1266,10 @@ fi
   fi
   set_data1dir
   cd $DATA1DIR/systemFiles
-  tar -czf /tmp/$COMPRESSFILE ./dbrm
+  tar -czf $TARPATH/$COMPRESSFILE ./dbrm
   cd - 1>/dev/null
   print_color "### DBRM EXTENT MAP BACKUP ###\n"
-  ech0 "Files in dbrm directory backed up to compressed archive /tmp/$COMPRESSFILE."
+  ech0 "Files in dbrm directory backed up to compressed archive $TARPATH/$COMPRESSFILE"
   ech0 "Files in /tmp can be deleted on reboot. It is recommended to move the archive to a safe location."
   ech0
 }
@@ -2329,6 +2355,7 @@ Switches:
    --help             # display this message
    --version          # only show the header with version information
    --logs             # create a compressed archive of logs for MariaDB Support Ticket
+   --path             # define the path for where to save files/tarballs and outputs of this script
    --backupdbrm       # takes a compressed backup of extent map files in dbrm directory
    --testschema       # creates a test schema, tables, imports, queries, drops schema
    --testschemakeep   # creates a test schema, tables, imports, queries, does not drop
@@ -2342,6 +2369,7 @@ Switches:
    --schemasync       # Fix out-of-sync columnstore tables (CAL0009)
    --tmpdir           # Ensure owner of temporary dir after reboot (MCOL-4866 & MCOL-5242)
    --checkports       # Checks if ports needed by Columnstore are opened
+   --eustack          # Dumps the stack of Columnstore processes
    --clearrollback    # Clear any rollback fragments from dbrm files
    --killcolumnstore  # Stop columnstore processes gracefully, then kill remaining processes
 
@@ -2403,6 +2431,53 @@ fi
   printf "$1" >> $OUTPUTFILE
 }
 
+function get_eu_stack() {
+  if ! command -v eu-stack &> /dev/null; then
+    printf "\n[!] eu-stack not found. Please install eu-stack\n\n"
+    ech0 "example: "
+    ech0 "  yum install elfutils -y"
+    ech0 "  apt-get install elfutils"
+    ech0 
+    exit 1; 
+  fi  
+  
+  # Confirm CS online
+  if [[ "$(ps -ef | grep -E "(PrimProc|ExeMgr|DMLProc|DDLProc|WriteEngineServer|StorageManager|controllernode|workernode)" | grep -v "grep"|wc -l)" == "0" ]]; then 
+    printf "Columnstore processes are not running. EU Stack will not be collected.\n\n"
+    exit 1;
+  fi
+
+  eu=$(which eu-stack)
+  EU_FOLDER="$(hostname)_$(date +"%Y-%m-%d-%H-%M-%S")_eu_stack"
+  if [ ! -d "$OUTDIR/$EU_FOLDER" ]; then mkdir -p "$OUTDIR/$EU_FOLDER"; fi
+
+  $eu -p $(pidof PrimProc) > "$OUTDIR/$EU_FOLDER/eu-PrimProc.txt" ;
+  $eu -p $(pidof DMLProc) > "$OUTDIR/$EU_FOLDER/eu-DMLProc.txt" ;
+  $eu -p $(pidof DDLProc) > "$OUTDIR/$EU_FOLDER/eu-DDLProc.txt" ;
+  $eu -p $(pidof mariadbd) > "$OUTDIR/$EU_FOLDER/eu-mariadbd.txt" ;
+  $eu -p $(pidof WriteEngineServer) > "$OUTDIR/$EU_FOLDER/eu-WriteEngineServer.txt" ;
+  $eu -p $(pidof controllernode) > "$OUTDIR/$EU_FOLDER/eu-controllernode.txt" ;
+  $eu -p $(pidof workernode) > "$OUTDIR/$EU_FOLDER/eu-workernode.txt" ;
+  cd $OUTDIR
+  tar -czf "$OUTDIR/$EU_FOLDER.tar.gz" $EU_FOLDER/*
+
+  if [ -f "$OUTDIR/$EU_FOLDER.tar.gz" ]; then
+    print_color "### EU STACK COMPLETE ###\n"
+  else
+    print0 "EU Stack files not found.\n"
+    exit 1;
+  fi
+
+  # cleanup
+  mv "$OUTDIR/$EU_FOLDER.tar.gz" $TARDIR
+  if [ -f "$TARDIR/$EU_FOLDER.tar.gz" ]; then
+    print0 "Created: $TARDIR/$EU_FOLDER.tar.gz \n\n"
+  else
+    print0 "EU Stack files not found.\n"
+    exit 1;
+  fi
+}
+
 COLOR=default
 for params in "$@"; do
   unset VALID;
@@ -2423,6 +2498,7 @@ for params in "$@"; do
   if [ "$params" == '--help' ]; then HELP=true; VALID=true; fi
   if [ "$params" == '--version' ]; then if [ ! $SKIP_REPORT ]; then DISPLAY_VERSION=true; fi; VALID=true; fi
   if [ "$params" == '--logs' ];    then if [ ! $SKIP_REPORT ]; then COLLECT_LOGS=true;    fi; VALID=true; fi
+  if [[ "$params" == "--path"* ]];    then USER_PROVIDED_OUTPUT_PATH=$(echo "$params" | awk -F= '{print $2}'); VALID=true; fi
   if [ "$params" == '--backupdbrm' ]; then BACKUP_DBRM=true; SKIP_REPORT=true; unset COLLECT_LOGS; VALID=true; fi
   if [ "$params" == '--testschema' ]; then TEST_SCHEMA=true; SKIP_REPORT=true; unset COLLECT_LOGS; VALID=true; fi
   if [ "$params" == '--testschemakeep' ]; then TEST_SCHEMA_KEEP=true; SKIP_REPORT=true; unset COLLECT_LOGS; VALID=true; fi
@@ -2438,13 +2514,14 @@ for params in "$@"; do
   if [ "$params" == '--clearrollback' ]; then CLEARROLLBACK=true; SKIP_REPORT=true; unset COLLECT_LOGS; VALID=true; fi
   if [ "$params" == '--checkports' ]; then SKIP_REPORT=true; CHECKPORTS=true;VALID=true; fi
   if [ "$params" == '--killcolumnstore' ]; then KILLCS=true; SKIP_REPORT=true; unset COLLECT_LOGS; VALID=true; fi  
+  if [ "$params" == '--eustack' ]; then SKIP_REPORT=true; COLLECT_EU_STACK=true;VALID=true; fi
   if [ ! $VALID ]; then  INVALID_INPUT=$params; fi
 done
 
 prepare_for_run
 exists_client_able_to_connect_with_socket
 if [ $DISPLAY_VERSION ]; then exit 0; fi
-if [ $INVALID_INPUT ]; then TEMP_COLOR=lred; print_color "Invalid parameter: ";ech0 $INVALID_INPUT; ech0; unset TEMP_COLOR; fi
+if [ $INVALID_INPUT ]; then TEMP_COLOR=lred; print_color "Invalid parameter: ";ech0 $INVALID_INPUT; ech0; unset TEMP_COLOR; exit 1; fi
 if [ $HELP ]||[ $INVALID_INPUT ]; then
   display_help_message
   exit 0
@@ -2599,7 +2676,10 @@ if [ $CHECKPORTS ]; then
 	check_ports
 fi
 
-
 if [ $KILLCS ]; then
   kill_columnstore
+fi
+
+if [ $COLLECT_EU_STACK ]; then
+  get_eu_stack
 fi
