@@ -3,7 +3,7 @@
 # script by Edward Stoever for MariaDB support
 # Contributors: Allen Herrera
 #               Patrizio Tamorri
-VERSION=1.4.13
+VERSION=1.4.14
 
 function prepare_for_run() {
   unset ERR
@@ -1024,6 +1024,9 @@ function collect_logs() {
   ls -1 columnstore/*z 2>/dev/null | cpio -pd $LOGSOUTDIR/ 2>/dev/null
   find columnstore/archive columnstore/install columnstore/trace -mtime -30 | cpio -pd $LOGSOUTDIR/ 2>/dev/null 
   #  find columnstore/cpimport -mtime -1 | cpio -pd $LOGSOUTDIR/ 2>/dev/null   # COLLECTS TOO MUCH
+  export LOGSOUTDIR
+  mkdir -p $LOGSOUTDIR/columnstore/cpimport
+  find columnstore/cpimport -name "*.log" -size +0 -mtime -2 -exec sh -c 'tail -2000 {} > $LOGSOUTDIR/columnstore/cpimport/$(basename {});' \;
   find columnstore/cpimport -name "*.err" -size +0 -mtime -2 | cpio -pd $LOGSOUTDIR/ 2>/dev/null
 
   #collect ports Status
@@ -1299,8 +1302,9 @@ if [ ! $CAN_CONNECT ]; then
 fi
 
 print_color "### Extent Map Check ###\n"
+unset ASK_TO_USE_CACHEFILE # PERMANENTLY DISABLE THE ASK TO USE CACHED EM TEXT SO THE THE FILE IS ALWAYS OVERWRITTEN
 CACHEFILE=$EMOUTDIR/cachetimestamp.txt
-if [ -f $CACHEFILE ]; then
+if [ -f $CACHEFILE ] && [ $ASK_TO_USE_CACHEFILE ]; then
   DT=$(cat $CACHEFILE|head -1); FILE_EM=$EMOUTDIR/em_$DT.txt
   if [ -f $FILE_EM ]; then
     CACHETIMESTAMP=(cat $CACHEFILE); MOD_TIME=$(stat -c %Y $CACHEFILE); RIGHTNOW=$(date +%s); HOW_LONG=$(expr $RIGHTNOW - $MOD_TIME); NUM_MINS=$(expr $HOW_LONG / 60);
@@ -1336,8 +1340,8 @@ if [ $CAN_CONNECT ] && [ "$IS_SYSCOLUMN" == "1" ]; then
   print0 "Your instance has $COLUMNSTORE_COLCOUNT Columnstore columns. There will likely be more than 2 files on disk for each column.\n"
 fi
 print0 "On very large databases, this process can take a long time.\n"
-print0 "It is recommended that you allow this process to complete.\n"
-print0 "Killing the editem process while it is running can damage the extent map.\n"
+# print0 "It is recommended that you allow this process to complete.\n"
+print0 "Avoid killing this process before completing the extent map to text file.\n"
 TEMP_COLOR='lred'; print_color "Do you want to run this process?"; unset TEMP_COLOR
   read -r -p " [y/N] " response
    if [[ $response == "y" || $response == "Y" || $response == "yes" || $response == "Yes" ]]; then CONTINUE=true; else ech0 "exiting..."; exit 0; fi
@@ -1378,9 +1382,9 @@ print \$fl,' ',\$oid,\"\n\";"
 
 if [ ! $USECACHED ]; then
   printf '%s\n' "$PLSCRIPT" > $FILEPL
-  TEMP_COLOR=blue; print_color "Starting extent map to text file.\n"; unset TEMP_COLOR
+  TEMP_COLOR=lcyan; print_color "Starting extent map to text file.\n"; unset TEMP_COLOR
   editem -i > $FILE_EM 2>/dev/null || echo 'An error has occurred running editem.';
-  TEMP_COLOR=lblue; print_color "Extent map to text file completed.\n"; unset TEMP_COLOR
+  TEMP_COLOR=lgreen; print_color "Extent map to text file completed OK.\n"; unset TEMP_COLOR
 fi
 
   APPROX_FILE_SIZE=$(wc -c < $FILE_EM)
@@ -1413,7 +1417,7 @@ fi
     TEMP_COLOR=lred; print_color "The output for all files is too small. "; unset TEMP_COLOR; print0 "Something went wrong. Exiting\n\n"; exit 0;
   fi
 
-TEMP_COLOR=blue; print_color "Beginning process to compare text files with grep. This can take a while.\n"; unset TEMP_COLOR
+TEMP_COLOR=lblue; print_color "Beginning process to compare text files with grep. This can take a while.\n"; unset TEMP_COLOR
 ORPHAN_COUNT=$(grep -F -x -v -f  <(cat $FILE_EM_FILES | awk '{print $1}') $FILE_ALL_FILES |wc -l)
 if [ $ORPHAN_COUNT == "1" ]; then
   ORPHANED_MSG='There is 1 orphaned file:'; else ORPHANED_MSG="There are $ORPHAN_COUNT orphaned files:"
@@ -1591,7 +1595,7 @@ print \$fl,' ',\$oid,\"\n\";"
 
 if [ ! $USECACHED ]; then
   printf '%s\n' "$PLSCRIPT" > $FILEPL
-  TEMP_COLOR=blue; print_color "Starting extent map to text file.\n"; unset TEMP_COLOR
+  TEMP_COLOR=lcyan; print_color "Starting extent map to text file.\n"; unset TEMP_COLOR
   editem -i > $FILE_EM 2>/dev/null || echo 'An error has occurred running editem.';
   TEMP_COLOR=lblue; print_color "Extent map to text file completed.\n"; unset TEMP_COLOR
 fi
